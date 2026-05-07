@@ -72,6 +72,22 @@ from inside the workspace gets correct ownership for free.
 `HELIX_MAX_SLOTS_PER_REPO` (default 8) caps slots per repo. `!done` and
 `!stop` both call `helix-repo release-thread <id>`.
 
+## Init-time tasks
+
+`startos/init/initializeService.ts` runs on first install only and surfaces
+two tasks via `sdk.action.createOwnTask`:
+
+- **configure** — `critical` severity. StartOS blocks the service from
+  starting until the user runs it. Without Matrix/Gitea/vLLM creds the
+  agent has nothing useful to do.
+- **start-cli-login** — `important`. Only needed for the `!install`
+  bot command (which sideloads built packages onto this server); not
+  blocking.
+
+Tasks dedup by replayId (`<package-id>:<action-id>` by default), so it's
+safe to call `createOwnTask` again later — it'll be a no-op until the
+user runs the action.
+
 ## Synapse homeserver auto-fill
 
 The Matrix dependency is the `synapse` package (id `synapse`, not `matrix`).

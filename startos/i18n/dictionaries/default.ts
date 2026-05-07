@@ -28,6 +28,9 @@ const dict = {
   'vLLM endpoint URL': 19,
   'vLLM model name': 20,
   'Configuration saved': 21,
+  'Set Matrix bot, Gitea, and vLLM credentials so the agent can boot.': 22,
+  'Sign the agent into start-cli on this server. Required for `!install` (building and installing packages onto this server).':
+    23,
 } as const
 
 /**
