@@ -20,6 +20,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git make jq gawk \
       python3 squashfs-tools \
       podman fuse-overlayfs uidmap slirp4netns \
+      btrfs-progs \
       openssh-client \
     && rm -rf /var/lib/apt/lists/*
 
@@ -42,6 +43,10 @@ RUN cp agent-package.json package.json \
 
 # Bundle the built agent.
 COPY --from=agent-builder /agent/build ./build
+
+# helix-repo wrapper — pooled CoW repo slots for per-thread workspaces.
+COPY agent/bin/helix-repo /usr/local/bin/helix-repo
+RUN chmod +x /usr/local/bin/helix-repo
 
 # Service writes everything (start-cli creds, sqlite, repos) under /data
 # (mounted by StartOS from the 'main' volume). HOME is set there too so

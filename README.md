@@ -62,8 +62,32 @@ own StartOS box.
 | `!build`                 | Run `make` in the thread's workspace                                          |
 | `!install`               | `!build` then `start-cli package install` (needs Sign-in)                    |
 | `!interrupt <message>`   | Abort the in-flight turn and steer the agent with `<message>`               |
+| `!done`                  | Release this thread's `helix-repo` slots                                     |
 | `!stop`                  | Shut the daemon down — restart from the StartOS UI to bring it back          |
 | `!help`                  | List commands                                                                |
+
+## Repo slots
+
+The agent's bash tool has a `helix-repo` wrapper available. It maintains
+a clean **baseline** clone per repo and hands each thread a copy-on-write
+**slot** snapshotted from baseline:
+
+```sh
+cd "$(helix-repo Start9Labs/helix-home-startos)"   # acquires a slot
+cd "$(helix-repo http://gitea.startos:3000/me/foo.git my-branch)"
+helix-repo list                                     # who owns what
+```
+
+On btrfs (StartOS data volumes are usually btrfs), slots are real subvolume
+snapshots — creating one is instant and shares storage with baseline until
+divergence. On other filesystems the wrapper falls back to
+`cp --reflink=auto -r`. Either way, build artefacts (`node_modules/`,
+`target/`) live inside the slot and survive the thread, but baseline is
+never modified.
+
+Slots are per-repo capped (`HELIX_MAX_SLOTS_PER_REPO`, default 8). `!done`
+releases every slot owned by the calling thread; `!stop` releases this
+thread's slots before exiting.
 
 ## Dependencies
 

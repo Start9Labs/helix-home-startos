@@ -1,0 +1,225 @@
+#!/bin/sh
+#
+# helix-repo — pooled, copy-on-write repo slots for helix-home.
+#
+# Usage:
+#   helix-repo <owner/repo|url> [branch]    Acquire a slot for this thread.
+#                                           Prints the slot path.
+#   helix-repo release <slot-path>          Release one slot.
+#   helix-repo release-thread <thread-id>   Release every slot owned by a thread.
+#   helix-repo list                         List slots and owners.
+#
+# Layout under "$HELIX_REPOS_DIR" (default: $HELIX_DATA_DIR/repos):
+#
+#   <repo-key>/
+#     baseline/                             clean clone, never modified
+#     slots/slot-N/                         per-thread working tree
+#     slots/slot-N/.helix/owner             contains the thread id
+#
+# A slot is a btrfs subvolume snapshot of baseline when the FS supports it,
+# otherwise a `cp --reflink=auto -r` (CoW on xfs/btrfs, plain copy elsewhere).
+#
+# The caller's thread is identified, in order:
+#   1. $HELIX_THREAD_ID
+#   2. ./.helix/thread-id, walking up from $PWD
+# If neither exists the slot is owned by "anonymous" — `!done` won't free it.
+
+set -eu
+
+REPOS_DIR="${HELIX_REPOS_DIR:-${HELIX_DATA_DIR:-/data}/repos}"
+MAX_SLOTS_PER_REPO="${HELIX_MAX_SLOTS_PER_REPO:-8}"
+GITEA_HOST="${GITEA_HOST:-}"
+GITEA_TOKEN="${GITEA_TOKEN:-}"
+
+mkdir -p "$REPOS_DIR"
+
+log() { printf 'helix-repo: %s\n' "$*" >&2; }
+die() { log "$*"; exit 1; }
+
+# Resolve thread id of the caller.
+resolve_thread() {
+  if [ -n "${HELIX_THREAD_ID:-}" ]; then
+    printf '%s\n' "$HELIX_THREAD_ID"
+    return
+  fi
+  d="$PWD"
+  while [ "$d" != / ] && [ -n "$d" ]; do
+    if [ -f "$d/.helix/thread-id" ]; then
+      cat "$d/.helix/thread-id"
+      return
+    fi
+    d="$(dirname "$d")"
+  done
+  printf 'anonymous\n'
+}
+
+# Extract a stable repo key from `owner/repo` or a full URL.
+repo_key() {
+  arg="$1"
+  base="${arg##*/}"
+  printf '%s\n' "${base%.git}"
+}
+
+# Build a clone URL. Accepts owner/repo (uses GITEA_HOST + token) or a URL.
+repo_url() {
+  arg="$1"
+  case "$arg" in
+    *://*|git@*) printf '%s\n' "$arg"; return ;;
+  esac
+  # owner/repo shorthand
+  case "$arg" in
+    */*) ;;
+    *) die "unrecognised repo '$arg' — use owner/repo or a full URL" ;;
+  esac
+  [ -n "$GITEA_HOST" ] || die "GITEA_HOST not set; pass a full clone URL instead"
+  host="${GITEA_HOST%/}"
+  if [ -n "$GITEA_TOKEN" ]; then
+    printf '%s\n' "$host/$arg.git" \
+      | sed -e "s|://|://oauth2:${GITEA_TOKEN}@|"
+  else
+    printf '%s\n' "$host/$arg.git"
+  fi
+}
+
+# btrfs subvolume snapshot if /data is btrfs, else cp --reflink=auto.
+snapshot() {
+  src="$1"
+  dst="$2"
+  if command -v btrfs >/dev/null 2>&1 \
+     && btrfs subvolume snapshot "$src" "$dst" >/dev/null 2>&1
+  then
+    return 0
+  fi
+  cp -a --reflink=auto "$src" "$dst"
+}
+
+destroy() {
+  d="$1"
+  if [ ! -e "$d" ]; then return 0; fi
+  if command -v btrfs >/dev/null 2>&1 \
+     && btrfs subvolume delete "$d" >/dev/null 2>&1
+  then
+    return 0
+  fi
+  rm -rf "$d"
+}
+
+# Ensure baseline clone exists (idempotent + interlock).
+ensure_baseline() {
+  key="$1"
+  url="$2"
+  branch="$3"
+  base="$REPOS_DIR/$key/baseline"
+  lock="$REPOS_DIR/$key/.baseline.lock"
+  mkdir -p "$REPOS_DIR/$key"
+  if [ -d "$base/.git" ]; then
+    # Refresh refs in the background of the lock so two concurrent acquires
+    # don't both try to fetch.
+    (
+      flock 9
+      cd "$base"
+      git fetch --quiet --tags origin || true
+      [ -n "$branch" ] && git checkout --quiet "$branch" 2>/dev/null || true
+    ) 9>"$lock"
+    return
+  fi
+  (
+    flock 9
+    if [ ! -d "$base/.git" ]; then
+      log "cloning baseline for $key from $url"
+      # Subvol if we can; falls back gracefully.
+      if command -v btrfs >/dev/null 2>&1 \
+         && btrfs subvolume create "$base" >/dev/null 2>&1
+      then :
+      else
+        mkdir -p "$base"
+      fi
+      git clone --quiet "$url" "$base"
+      [ -n "$branch" ] && (cd "$base" && git checkout --quiet "$branch") || true
+    fi
+  ) 9>"$lock"
+}
+
+# Try to atomically claim the first free slot.
+claim_slot() {
+  key="$1"
+  thread="$2"
+  slots_dir="$REPOS_DIR/$key/slots"
+  mkdir -p "$slots_dir"
+  i=0
+  while [ "$i" -lt "$MAX_SLOTS_PER_REPO" ]; do
+    slot="$slots_dir/slot-$i"
+    marker="$slot/.helix/owner"
+    if [ ! -e "$slot" ]; then
+      snapshot "$REPOS_DIR/$key/baseline" "$slot"
+      mkdir -p "$slot/.helix"
+      printf '%s\n' "$thread" > "$marker.tmp"
+      mv "$marker.tmp" "$marker"
+      printf '%s\n' "$slot"
+      return 0
+    fi
+    i=$((i + 1))
+  done
+  return 1
+}
+
+cmd_acquire() {
+  arg="$1"
+  branch="${2:-}"
+  url="$(repo_url "$arg")"
+  key="$(repo_key "$arg")"
+  thread="$(resolve_thread)"
+  ensure_baseline "$key" "$url" "$branch"
+  slot="$(claim_slot "$key" "$thread")" || \
+    die "no free slots for $key (cap=$MAX_SLOTS_PER_REPO). Run !done in idle threads."
+  if [ -n "$branch" ]; then
+    (cd "$slot" && git checkout --quiet "$branch" 2>/dev/null || true)
+  fi
+  printf '%s\n' "$slot"
+}
+
+cmd_release() {
+  slot="$1"
+  [ -d "$slot" ] || die "no such slot: $slot"
+  destroy "$slot"
+}
+
+cmd_release_thread() {
+  thread="$1"
+  count=0
+  for repo in "$REPOS_DIR"/*; do
+    [ -d "$repo/slots" ] || continue
+    for slot in "$repo"/slots/slot-*; do
+      [ -d "$slot" ] || continue
+      owner_file="$slot/.helix/owner"
+      [ -f "$owner_file" ] || continue
+      owner="$(cat "$owner_file" 2>/dev/null || true)"
+      if [ "$owner" = "$thread" ]; then
+        destroy "$slot"
+        count=$((count + 1))
+      fi
+    done
+  done
+  printf 'released %d slot(s) for %s\n' "$count" "$thread"
+}
+
+cmd_list() {
+  for repo in "$REPOS_DIR"/*; do
+    [ -d "$repo/slots" ] || continue
+    name="${repo##*/}"
+    for slot in "$repo"/slots/slot-*; do
+      [ -d "$slot" ] || continue
+      owner=$(cat "$slot/.helix/owner" 2>/dev/null || printf 'unknown')
+      printf '%s\t%s\t%s\n' "$name" "${slot##*/}" "$owner"
+    done
+  done
+}
+
+cmd="${1:-}"
+case "$cmd" in
+  release)         shift; cmd_release "$@" ;;
+  release-thread)  shift; cmd_release_thread "$@" ;;
+  list)            shift; cmd_list ;;
+  '') die "usage: helix-repo <owner/repo|url> [branch] | release <path> | release-thread <id> | list" ;;
+  *)               cmd_acquire "$@" ;;
+esac

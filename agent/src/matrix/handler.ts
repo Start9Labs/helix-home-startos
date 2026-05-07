@@ -4,6 +4,7 @@ import { marked } from 'marked'
 import { allowList, env } from '../config.js'
 import { abortThread, dispatch } from '../agent/session.js'
 import { buildPackage, installPackage } from '../build/install.js'
+import { ensureWorkspace, releaseThreadSlots } from '../utils/slots.js'
 
 const THREAD_REL = 'm.thread'
 
@@ -51,11 +52,23 @@ async function handle(
       : ev.event_id
 
   const cwd = join(env.HELIX_DATA_DIR, 'workspaces', encode(threadRoot))
+  await ensureWorkspace(cwd, threadRoot)
+
+  // !done: release every helix-repo slot owned by this thread. Use when
+  // the work in this thread is finished so other threads can claim the
+  // freed slots — slots are capped per-repo, so leaving them held will
+  // eventually deny new acquires.
+  if (body === '!done') {
+    const note = await releaseThreadSlots(threadRoot)
+    await reply(client, roomId, ev, threadRoot, `${note}`)
+    return
+  }
 
   // !stop: graceful exit. StartOS keeps the service stopped until the
-  // user starts it again. Useful when the bot has gone off the rails or
-  // a hot upgrade is needed.
+  // user starts it again. Free this thread's slots first so they aren't
+  // pinned across the restart.
   if (body === '!stop' || body === '!stop-force') {
+    await releaseThreadSlots(threadRoot)
     await reply(client, roomId, ev, threadRoot, 'Shutting down — restart the service from the StartOS UI to bring me back.')
     setTimeout(() => process.exit(0), 250)
     return
@@ -120,8 +133,11 @@ async function handle(
         '- `!build` — run `make` in this thread\'s workspace',
         '- `!install` — `!build` then `start-cli package install` (requires "Sign in to StartOS" action)',
         '- `!interrupt <message>` — abort the in-flight turn and steer with `<message>`',
+        '- `!done` — release this thread\'s `helix-repo` slots',
         '- `!stop` — shut the service down (restart from the StartOS UI to bring me back)',
         '- anything else — dispatched to the coding agent',
+        '',
+        'Inside a thread, the agent has the `helix-repo` wrapper available — it acquires a CoW slot for any Gitea repo (`helix-repo owner/repo` or full URL).',
       ].join('\n'),
     )
     return

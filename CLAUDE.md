@@ -38,12 +38,39 @@ The bot listens for these in any Matrix message it can see (subject to
 - `!install` — `!build` then `start-cli package install` (requires Sign-in
   action first)
 - `!interrupt <message>` — abort the current pi turn, steer with `<message>`
-- `!stop` — exit the daemon (StartOS keeps it stopped until restarted)
+- `!done` — release this thread's `helix-repo` slots
+- `!stop` — exit the daemon (StartOS keeps it stopped until restarted; also
+  releases this thread's slots first)
 - `!help` — list these
 - anything else — dispatched to pi as a fresh prompt for that thread
 
 Per-thread workspaces live under `/data/workspaces/<thread-root-id>/`. Pi
-sessions persist under `/data/sessions/<thread-root-id>/`.
+sessions persist under `/data/sessions/<thread-root-id>/`. The handler
+writes `<workspace>/.helix/thread-id` so the `helix-repo` wrapper picks
+the right owner for slot acquisitions.
+
+## Repo slots (helix-repo)
+
+`agent/bin/helix-repo` is copied to `/usr/local/bin/helix-repo` in the
+runtime image. It gives pi a pooled, copy-on-write working tree per repo:
+
+```
+/data/repos/<key>/baseline/       single clean clone (refreshed on acquire)
+/data/repos/<key>/slots/slot-N/   per-thread snapshot of baseline
+        slot-N/.helix/owner       thread id
+```
+
+On btrfs (StartOS volumes are usually btrfs), slot creation is a
+`btrfs subvolume snapshot` — instant + storage shared with baseline until
+divergence. Falls back to `cp --reflink=auto -r` elsewhere.
+
+Thread attribution: `helix-repo` reads `$HELIX_THREAD_ID` first, then walks
+up from `$PWD` for `.helix/thread-id`. The matrix handler writes that file
+in the workspace before each dispatch, so any pi turn calling `helix-repo`
+from inside the workspace gets correct ownership for free.
+
+`HELIX_MAX_SLOTS_PER_REPO` (default 8) caps slots per repo. `!done` and
+`!stop` both call `helix-repo release-thread <id>`.
 
 ## start-cli auth
 
