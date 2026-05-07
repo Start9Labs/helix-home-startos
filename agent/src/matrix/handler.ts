@@ -64,13 +64,12 @@ async function handle(
     return
   }
 
-  // !stop: graceful exit. StartOS keeps the service stopped until the
-  // user starts it again. Free this thread's slots first so they aren't
-  // pinned across the restart.
-  if (body === '!stop' || body === '!stop-force') {
-    await releaseThreadSlots(threadRoot)
-    await reply(client, roomId, ev, threadRoot, 'Shutting down — restart the service from the StartOS UI to bring me back.')
-    setTimeout(() => process.exit(0), 250)
+  // !stop: abort the in-flight pi turn for this thread. No follow-up
+  // dispatch (use !interrupt <message> when you want to redirect the
+  // agent). The daemon stays running so other threads keep working.
+  if (body === '!stop') {
+    await abortThread(threadRoot)
+    await reply(client, roomId, ev, threadRoot, 'Stopped.')
     return
   }
 
@@ -133,8 +132,8 @@ async function handle(
         '- `!build` — run `make` in this thread\'s workspace',
         '- `!install` — `!build` then `start-cli package install` (requires "Sign in to StartOS" action)',
         '- `!interrupt <message>` — abort the in-flight turn and steer with `<message>`',
+        '- `!stop` — abort the in-flight turn (no follow-up)',
         '- `!done` — release this thread\'s `helix-repo` slots',
-        '- `!stop` — shut the service down (restart from the StartOS UI to bring me back)',
         '- anything else — dispatched to the coding agent',
         '',
         'Inside a thread, the agent has the `helix-repo` wrapper available — it acquires a CoW slot for any Gitea repo (`helix-repo owner/repo` or full URL).',

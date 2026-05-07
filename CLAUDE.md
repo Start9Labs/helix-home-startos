@@ -38,9 +38,9 @@ The bot listens for these in any Matrix message it can see (subject to
 - `!install` — `!build` then `start-cli package install` (requires Sign-in
   action first)
 - `!interrupt <message>` — abort the current pi turn, steer with `<message>`
+- `!stop` — abort the current pi turn (no follow-up dispatch). Daemon
+  stays running; other threads unaffected.
 - `!done` — release this thread's `helix-repo` slots
-- `!stop` — exit the daemon (StartOS keeps it stopped until restarted; also
-  releases this thread's slots first)
 - `!help` — list these
 - anything else — dispatched to pi as a fresh prompt for that thread
 

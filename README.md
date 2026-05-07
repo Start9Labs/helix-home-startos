@@ -70,8 +70,8 @@ own StartOS box.
 | `!build`                 | Run `make` in the thread's workspace                                          |
 | `!install`               | `!build` then `start-cli package install` (needs Sign-in)                    |
 | `!interrupt <message>`   | Abort the in-flight turn and steer the agent with `<message>`               |
+| `!stop`                  | Abort the in-flight turn (no follow-up)                                      |
 | `!done`                  | Release this thread's `helix-repo` slots                                     |
-| `!stop`                  | Shut the daemon down — restart from the StartOS UI to bring it back          |
 | `!help`                  | List commands                                                                |
 
 ## Repo slots
