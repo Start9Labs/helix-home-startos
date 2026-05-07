@@ -16,9 +16,9 @@ export const main = sdk.setupMain(async ({ effects }) => {
     vllm: { endpoint: '', model: '' },
   }
 
-  // Read-only mount of vllm's store volume so the agent can pick up the
-  // apiKey and serveArgs that vllm-startos exports there. The file is
-  // /<vllm-volume>/store.json (see vllm-startos/startos/fileModels/store.json.ts).
+  // Read-only mount of vllm's `public` volume — that's where vllm-startos
+  // mirrors its apiKey for dependent services to pick up
+  // (vllm-startos/startos/fileModels/credentials.json.ts).
   const sub = await sdk.SubContainer.of(
     effects,
     { imageId: 'helix-home' },
@@ -31,7 +31,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
       })
       .mountDependency({
         dependencyId: 'vllm',
-        volumeId: 'main',
+        volumeId: 'public',
         subpath: null,
         mountpoint: '/run/vllm',
         readonly: true,
@@ -54,10 +54,11 @@ export const main = sdk.setupMain(async ({ effects }) => {
         GITEA_TOKEN: cfg.gitea.token,
         VLLM_ENDPOINT: cfg.vllm.endpoint,
         VLLM_MODEL: cfg.vllm.model,
-        // Path to vllm's store.json (mounted from the vllm dependency).
-        // The agent reads `apiKey` from here so the user doesn't have to
-        // copy it manually. Endpoint defaults to vllm's intra-StartOS URL.
-        VLLM_DEP_STORE: '/run/vllm/store.json',
+        // Path to vllm's public credentials file (mounted from the vllm
+        // dep's `public` volume). The agent reads `apiKey` from here so
+        // the user doesn't have to copy it manually. Endpoint defaults to
+        // vllm's intra-StartOS URL.
+        VLLM_DEP_STORE: '/run/vllm/credentials.json',
         VLLM_DEP_ENDPOINT: 'http://vllm.startos:8000/v1',
       },
     },

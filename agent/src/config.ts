@@ -25,32 +25,17 @@ export type Env = z.infer<typeof envSchema>
 
 const rawEnv: Env = envSchema.parse(process.env)
 
-// Pull apiKey (and serveArgs.model if useful) out of vllm's exported
-// store.json. Best-effort — if the mount isn't present yet (vllm not
-// running) we just fall through and the agent stays idle.
-function readVllmDep(): { apiKey: string; model: string } {
-  if (!rawEnv.VLLM_DEP_STORE) return { apiKey: '', model: '' }
+// Pull apiKey out of vllm's public credentials file (mounted from the vllm
+// dep's `public` volume). Best-effort — if the mount isn't present yet
+// (vllm not running) we just fall through and the agent stays idle.
+function readVllmDep(): { apiKey: string } {
+  if (!rawEnv.VLLM_DEP_STORE) return { apiKey: '' }
   try {
     const raw = readFileSync(rawEnv.VLLM_DEP_STORE, 'utf8')
-    const j = JSON.parse(raw) as {
-      apiKey?: unknown
-      serveArgs?: unknown
-    }
-    let model = ''
-    if (Array.isArray(j.serveArgs)) {
-      // vllm's serve command is `vllm serve <model> [...]` — the first
-      // positional arg is the model id. Do a best-effort scrape.
-      const argv = (j.serveArgs as unknown[]).filter(
-        (s): s is string => typeof s === 'string',
-      )
-      model = argv.find((a) => !a.startsWith('-')) ?? ''
-    }
-    return {
-      apiKey: typeof j.apiKey === 'string' ? j.apiKey : '',
-      model,
-    }
+    const j = JSON.parse(raw) as { apiKey?: unknown }
+    return { apiKey: typeof j.apiKey === 'string' ? j.apiKey : '' }
   } catch {
-    return { apiKey: '', model: '' }
+    return { apiKey: '' }
   }
 }
 
@@ -63,7 +48,7 @@ export const env: Env & {
 } = {
   ...rawEnv,
   effectiveVllmEndpoint: rawEnv.VLLM_ENDPOINT || rawEnv.VLLM_DEP_ENDPOINT,
-  effectiveVllmModel: rawEnv.VLLM_MODEL || dep.model,
+  effectiveVllmModel: rawEnv.VLLM_MODEL,
   effectiveVllmApiKey: rawEnv.VLLM_API_KEY || dep.apiKey,
 }
 

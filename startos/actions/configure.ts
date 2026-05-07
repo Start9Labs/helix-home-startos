@@ -57,9 +57,9 @@ export const inputSpec = InputSpec.of({
   vllmModel: Value.text({
     name: i18n('vLLM model name'),
     description: null,
-    required: false,
+    required: true,
     default: null,
-    placeholder: 'auto (read from vllm serveArgs)',
+    placeholder: 'Qwen/Qwen2.5-Coder-32B-Instruct',
   }),
 })
 

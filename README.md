@@ -36,9 +36,10 @@ own StartOS box.
    - Matrix homeserver URL, bot user ID, bot access token
    - (optional) comma-separated allow-list of room IDs / user IDs
    - Gitea host URL + an API token for the bot user
-   - **vLLM is auto-detected from the dependency** (api key, endpoint, model
-     all come from the vllm package's exported `store.json`). The vLLM
-     endpoint and model fields in the action are optional overrides.
+   - vLLM model name (required — e.g. `Qwen/Qwen2.5-Coder-32B-Instruct`).
+     The **api key and endpoint are auto-discovered** from the vllm
+     dependency's `public/credentials.json` and the vllm interface URL.
+     The endpoint field is an optional override.
 4. Restart the service. The bot connects to Matrix and starts replying.
 
 ## Volumes & data layout
@@ -95,7 +96,7 @@ thread's slots before exiting.
 | ------- | ------------------------------------------------------------------------- |
 | matrix  | The bot's home; threads are the unit of conversation/session              |
 | gitea   | Where the agent commits/pushes its work                                    |
-| vllm    | OpenAI-compatible LLM endpoint pi targets. Mounted read-only at `/run/vllm/`; api key comes from `store.json`. |
+| vllm    | OpenAI-compatible LLM endpoint pi targets. Vllm's `public` volume is mounted read-only at `/run/vllm/`; api key comes from `credentials.json`. |
 
 ## Known limitations
 

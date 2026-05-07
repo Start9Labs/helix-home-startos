@@ -74,17 +74,18 @@ from inside the workspace gets correct ownership for free.
 
 ## vLLM auto-discovery
 
-The vllm dependency's volume is mounted read-only at `/run/vllm/` (declared
-in `startos/main.ts` via `mountDependency`). On agent boot, `config.ts`
-parses `/run/vllm/store.json` and pulls:
-
-- `apiKey` → exposed as `OPENAI_API_KEY` to pi before `AuthStorage.create()`
-- `serveArgs[0]` (the positional model id passed to `vllm serve`) → used as
-  the default model name
+vllm-startos exposes a dedicated `public` volume containing
+`credentials.json` (`{ apiKey: string }`) for dependent services. We mount
+that volume read-only at `/run/vllm/` (declared in `startos/main.ts` via
+`mountDependency` with `volumeId: 'public'`). On agent boot, `config.ts`
+parses `/run/vllm/credentials.json` and pulls `apiKey`, which is then
+exposed as `OPENAI_API_KEY` before `AuthStorage.create()` so pi picks it
+up.
 
 The endpoint defaults to `http://vllm.startos:8000/v1` (vllm's `api`
-interface). The Configure action's `vllmEndpoint` / `vllmModel` fields are
-optional overrides that take precedence when set.
+interface). The Configure action's `vllmEndpoint` field is an optional
+override; `vllmModel` is required (vllm's public volume doesn't currently
+expose the running model id).
 
 ## start-cli auth
 
