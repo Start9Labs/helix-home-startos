@@ -1,141 +1,90 @@
 <p align="center">
-  <img src="icon.svg" alt="Hello World Logo" width="21%">
+  <img src="icon.svg" alt="Helix Home" width="21%">
 </p>
 
-# Hello World on StartOS
+# Helix Home on StartOS
 
-> **Upstream repo:** <https://github.com/Start9Labs/hello-world>
+> A self-hosted AI developer agent — talk to it in Matrix, it writes code,
+> commits to your local Gitea, runs an LLM via vLLM, and (only when you
+> explicitly tell it to) builds and installs StartOS packages on this
+> server.
 
-A minimal reference service for StartOS. It displays a simple web page — nothing more. Use [this repository](https://github.com/Start9Labs/hello-world-startos) as a template when packaging a new service for StartOS.
+Inspired by the Helix agent that runs the Start9 Labs engineering pipeline,
+this is a much smaller, single-user, single-server cousin of it. No
+Anthropic billing, no GitHub — just your own LLM, your own Gitea, and your
+own StartOS box.
 
-## Getting Started
+## What it does
 
-To learn how to use this template to create your own StartOS service package, see the [Packaging Guide](https://docs.start9.com/packaging).
+- Listens in Matrix rooms (E2EE, scoped by an allow-list)
+- Dispatches each thread to a [`pi-coding-agent`](https://github.com/mariozechner/pi)
+  session backed by your local vLLM
+- Has a real bash tool, so it clones Gitea repos, edits, commits, pushes,
+  runs tests, etc., per thread
+- On `!build` / `!install`, runs `make` and `start-cli package install`
+  inside its own container — the **only** way the agent ever touches the
+  host StartOS
 
----
+## Install + first-run flow
 
-## Table of Contents
+1. Install Helix Home from your registry (or sideload). Make sure you have
+   **Matrix**, **Gitea**, and **vLLM** installed and running first.
+2. Run the **Sign in to StartOS** action, supply this server's hostname and
+   master password. The agent stores its `start-cli` session in `/data/home`
+   on the persistent volume.
+3. Run the **Configure agent** action with:
+   - Matrix homeserver URL, bot user ID, bot access token
+   - (optional) comma-separated allow-list of room IDs / user IDs
+   - Gitea host URL + an API token for the bot user
+   - vLLM endpoint URL (e.g. `http://vllm.startos:8000/v1`) + model name
+4. Restart the service. The bot connects to Matrix and starts replying.
 
-- [Image and Container Runtime](#image-and-container-runtime)
-- [Volume and Data Layout](#volume-and-data-layout)
-- [Installation and First-Run Flow](#installation-and-first-run-flow)
-- [Configuration Management](#configuration-management)
-- [Network Access and Interfaces](#network-access-and-interfaces)
-- [Actions (StartOS UI)](#actions-startos-ui)
-- [Backups and Restore](#backups-and-restore)
-- [Health Checks](#health-checks)
-- [Dependencies](#dependencies)
-- [Limitations and Differences](#limitations-and-differences)
-- [What Is Unchanged from Upstream](#what-is-unchanged-from-upstream)
-- [Contributing](#contributing)
-- [Quick Reference for AI Consumers](#quick-reference-for-ai-consumers)
+## Volumes & data layout
 
----
+| Volume | Mount    | Purpose                                                      |
+| ------ | -------- | ------------------------------------------------------------ |
+| `main` | `/data`  | Pi sessions, per-thread workspaces, start-cli creds, config  |
 
-## Image and Container Runtime
+```
+/data/
+├── home/.startos/config.yaml   # start-cli session (from Sign-in action)
+├── config.json                 # set by the Configure action
+├── matrix/                     # E2EE crypto + sync state
+├── sessions/<thread>/          # pi JSONL session files
+└── workspaces/<thread>/        # repo clones the agent works in
+```
 
-| Property      | Value                                  |
-| ------------- | -------------------------------------- |
-| Image         | `ghcr.io/start9labs/hello-world`       |
-| Architectures | x86_64, aarch64, riscv64               |
-| Command       | `hello-world`                          |
+## Bot commands
 
----
-
-## Volume and Data Layout
-
-| Volume | Mount Point | Purpose         |
-| ------ | ----------- | --------------- |
-| `main` | `/data`     | Persistent data |
-
----
-
-## Installation and First-Run Flow
-
-No special setup. Install and start — the web page is immediately available.
-
----
-
-## Configuration Management
-
-No configurable settings. The service runs with no user-facing configuration.
-
----
-
-## Network Access and Interfaces
-
-| Interface | Port | Protocol | Purpose              |
-| --------- | ---- | -------- | -------------------- |
-| Web UI    | 80   | HTTP     | Hello World web page |
-
-**Access methods:**
-
-- LAN IP with unique port
-- `<hostname>.local` with unique port
-- Tor `.onion` address
-- Custom domains (if configured)
-
----
-
-## Actions (StartOS UI)
-
-None.
-
----
-
-## Backups and Restore
-
-**Included in backup:**
-
-- `main` volume
-
-**Restore behavior:** Volume is fully restored before the service starts.
-
----
-
-## Health Checks
-
-| Check         | Method              | Messages                                                           |
-| ------------- | ------------------- | ------------------------------------------------------------------ |
-| Web Interface | Port listening (80) | Success: "The web interface is ready" / Error: "The web interface is not ready" |
-
----
+| Command                  | Effect                                                                       |
+| ------------------------ | ---------------------------------------------------------------------------- |
+| anything (no leading `!`) | Dispatched to pi as a prompt for the current thread                          |
+| `!build`                 | Run `make` in the thread's workspace                                          |
+| `!install`               | `!build` then `start-cli package install` (needs Sign-in)                    |
+| `!interrupt <message>`   | Abort the in-flight turn and steer the agent with `<message>`               |
+| `!stop`                  | Shut the daemon down — restart from the StartOS UI to bring it back          |
+| `!help`                  | List commands                                                                |
 
 ## Dependencies
 
-None.
+| Package | Why                                                                       |
+| ------- | ------------------------------------------------------------------------- |
+| matrix  | The bot's home; threads are the unit of conversation/session              |
+| gitea   | Where the agent commits/pushes its work                                    |
+| vllm    | OpenAI-compatible LLM endpoint pi targets                                  |
 
----
+## Known limitations
 
-## Limitations and Differences
-
-1. **No meaningful functionality** — this is a reference/template package only
-
----
-
-## What Is Unchanged from Upstream
-
-The service is identical to upstream. There are no modifications.
-
----
+- **`nestedRuntime` requires [start-os#3209](https://github.com/Start9Labs/start-os/pull/3209).**
+  Without the runtime change, the container has no `/dev/fuse`, so
+  `start-cli s9pk pack` (image build inside the container) won't be able to
+  use a rootless OCI engine. The manifest already declares the opt-in; it'll
+  start having an effect once that PR lands.
+- Pi only — there is no Claude SDK / Anthropic path here on purpose.
+- One-user assumption; allow-list is a soft fence, not a hard auth boundary.
+- Builds verified locally for x86_64. aarch64 builds work in CI (or any host
+  with `qemu-user-static` binfmt set up).
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for build instructions and development workflow.
-
----
-
-## Quick Reference for AI Consumers
-
-```yaml
-package_id: hello-world
-image: ghcr.io/start9labs/hello-world
-architectures: [x86_64, aarch64, riscv64]
-volumes:
-  main: /data
-ports:
-  ui: 80
-dependencies: none
-startos_managed_env_vars: none
-actions: none
-```
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [CLAUDE.md](CLAUDE.md).

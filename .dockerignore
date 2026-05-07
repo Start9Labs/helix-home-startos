@@ -1,2 +1,11 @@
 .git
 .gitmodules
+.github
+.helix
+javascript
+node_modules
+agent/node_modules
+agent/build
+*.s9pk
+README.md
+CONTRIBUTING.md

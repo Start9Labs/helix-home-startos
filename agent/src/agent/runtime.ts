@@ -1,0 +1,85 @@
+import { delimiter, join } from 'node:path'
+import {
+  AuthStorage,
+  ModelRegistry,
+  getAgentDir,
+} from '@mariozechner/pi-coding-agent'
+import type { Model } from '@mariozechner/pi-ai'
+import { env, hasVllm } from '../config.js'
+
+type Runtime = {
+  authStorage: AuthStorage
+  modelRegistry: ModelRegistry
+  agentDir: string
+  model: Model<any>
+}
+
+let runtime: Runtime | null = null
+
+export function initAgentRuntime(): Runtime {
+  if (runtime) return runtime
+
+  // Force git/ssh into non-interactive mode so a tool that would otherwise
+  // block on a credential prompt fails fast instead of hanging the session.
+  process.env.GIT_TERMINAL_PROMPT = '0'
+  process.env.GIT_ASKPASS = '/bin/true'
+  process.env.SSH_ASKPASS = '/bin/true'
+  process.env.SSH_ASKPASS_REQUIRE = 'never'
+  process.env.GCM_INTERACTIVE = 'Never'
+
+  // start-cli reads ~/.startos/config.yaml — point HOME at the persistent
+  // volume so creds written by the "Sign in to StartOS" action are visible.
+  const home = join(env.HELIX_DATA_DIR, 'home')
+  process.env.HOME = home
+
+  // Workspace + memory dirs the agent's bash tool will use.
+  process.env.HELIX_REPOS_DIR = join(env.HELIX_DATA_DIR, 'repos')
+  process.env.HELIX_S9PKS_DIR = join(env.HELIX_DATA_DIR, 's9pks')
+  process.env.HELIX_DATA_DIR = env.HELIX_DATA_DIR
+
+  // Ensure /usr/local/bin (start-cli) is on PATH for the model's bash tool.
+  const required = ['/usr/local/bin', '/usr/bin', '/bin']
+  const parts = (process.env.PATH ?? '').split(delimiter)
+  for (const dir of required) if (!parts.includes(dir)) parts.unshift(dir)
+  process.env.PATH = parts.join(delimiter)
+
+  const agentDir = getAgentDir()
+  const authStorage = AuthStorage.create()
+  const modelRegistry = ModelRegistry.create(authStorage)
+
+  if (!hasVllm) {
+    throw new Error(
+      'vLLM endpoint or model not configured. Run the "Configure agent" action.',
+    )
+  }
+
+  // vLLM exposes an OpenAI-compatible API. We register against pi's "openai"
+  // provider and then redirect baseUrl to the vLLM endpoint.
+  const model = modelRegistry.find('openai', env.VLLM_MODEL) ?? {
+    provider: 'openai',
+    id: env.VLLM_MODEL,
+    name: env.VLLM_MODEL,
+    baseUrl: env.VLLM_ENDPOINT,
+    contextWindow: 32_000,
+    maxTokens: 8_192,
+    cost: { input: 0, output: 0 },
+  }
+  ;(model as Model<any>).baseUrl = env.VLLM_ENDPOINT
+
+  runtime = {
+    authStorage,
+    modelRegistry,
+    agentDir,
+    model: model as Model<any>,
+  }
+  console.log(
+    `Helix Home: pi runtime ready (openai/${env.VLLM_MODEL} @ ${env.VLLM_ENDPOINT})`,
+  )
+  return runtime
+}
+
+export function getAgentRuntime(): Runtime {
+  if (!runtime)
+    throw new Error('Agent runtime not initialised — call initAgentRuntime()')
+  return runtime
+}

@@ -1,4 +1,8 @@
-// Here we define any constants or functions that are shared by multiple components
-// throughout the package codebase. This file will be unnecessary for many packages.
+// Constants and helpers shared across the package.
 
-export const uiPort = 80
+// Where the agent stores all of its state inside the container, mounted
+// from the 'main' volume. Includes start-cli credentials and the agent's
+// SQLite + per-thread workspaces.
+export const dataDir = '/data'
+
+export const configFileName = 'config.json'

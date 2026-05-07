@@ -1,20 +1,8 @@
 export const short = {
-  en_US: 'Bare bones example of a StartOS service',
-  es_ES: 'Ejemplo básico de un servicio de StartOS',
-  de_DE: 'Minimales Beispiel eines StartOS-Dienstes',
-  pl_PL: 'Podstawowy przykład usługi StartOS',
-  fr_FR: "Exemple minimaliste d'un service StartOS",
+  en_US: 'Develop StartOS packages from a Matrix chat using your own LLM',
 }
 
 export const long = {
   en_US:
-    'Hello World is a template service that provides examples of basic StartOS features.',
-  es_ES:
-    'Hello World es un servicio de plantilla que proporciona ejemplos de las características básicas de StartOS.',
-  de_DE:
-    'Hello World ist ein Vorlagen-Dienst, der Beispiele für grundlegende StartOS-Funktionen bietet.',
-  pl_PL:
-    'Hello World to szablon usługi, który zawiera przykłady podstawowych funkcji StartOS.',
-  fr_FR:
-    'Hello World est un service modèle qui fournit des exemples des fonctionnalités de base de StartOS.',
+    'Helix Home is a self-hosted AI developer agent. Talk to it in Matrix; it edits code, commits to your local Gitea, runs an LLM via vLLM, and — only when you explicitly tell it to — builds and installs StartOS packages on this server. Inspired by Start9 Labs internal Helix agent.',
 }
