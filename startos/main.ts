@@ -3,39 +3,75 @@ import { sdk } from './sdk'
 import { configFile } from './fileModels/config'
 import { dataDir } from './utils'
 
+const SYNAPSE_FALLBACK = 'http://synapse.startos'
+const GITEA_FALLBACK = 'http://gitea.startos'
+const VLLM_FALLBACK_ENDPOINT = 'http://vllm.startos:8000/v1'
+
 export const main = sdk.setupMain(async ({ effects }) => {
   console.info(i18n('Starting Helix Home...'))
 
-  // Seed the config file with empty defaults if it doesn't exist yet so the
-  // agent can boot with placeholder values until the user runs the
-  // "Configure agent" action.
   await configFile.merge(effects, {})
-  const cfg = (await configFile.read((c) => c).const(effects)) ?? {
-    matrix: { homeserver: '', userId: '', accessToken: '', allowList: '' },
-    gitea: { host: '', token: '' },
-    vllm: { endpoint: '', model: '' },
+  const cfg = (await configFile.read((c) => c).const(effects)) ?? null
+
+  // ----- resolve matrix homeserver -----
+  let matrixHomeserver = ''
+  if (cfg?.matrix.mode === 'external') {
+    matrixHomeserver = cfg.matrix.homeserver
+  } else {
+    const sif = await sdk.serviceInterface
+      .get(effects, { id: 'homeserver', packageId: 'synapse' })
+      .const()
+    matrixHomeserver =
+      sif?.addressInfo?.nonLocal.format('urlstring')[0] ?? SYNAPSE_FALLBACK
   }
 
-  // Read-only mount of vllm's `public` volume — that's where vllm-startos
-  // mirrors its apiKey for dependent services to pick up
-  // (vllm-startos/startos/fileModels/credentials.json.ts).
+  // ----- resolve gitea host -----
+  let giteaHost = ''
+  if (cfg?.gitea.mode === 'external') {
+    giteaHost = cfg.gitea.host
+  } else {
+    const sif = await sdk.serviceInterface
+      .get(effects, { id: 'http', packageId: 'gitea' })
+      .const()
+    giteaHost =
+      sif?.addressInfo?.nonLocal.format('urlstring')[0] ?? GITEA_FALLBACK
+  }
+
+  // ----- resolve vllm endpoint + (eventual) apiKey -----
+  let vllmEndpoint = ''
+  let vllmApiKey = ''
+  let vllmDepStorePath = ''
+  if (cfg?.vllm.mode === 'external') {
+    vllmEndpoint = cfg.vllm.endpoint
+    vllmApiKey = cfg.vllm.apiKey
+  } else {
+    vllmEndpoint = VLLM_FALLBACK_ENDPOINT
+    // The agent will read this on boot to pick up apiKey from vllm's
+    // public credentials.json.
+    vllmDepStorePath = '/run/vllm/credentials.json'
+  }
+
+  // ----- build mounts: only mount vllm dep when integration is internal -----
+  let mounts = sdk.Mounts.of().mountVolume({
+    volumeId: 'main',
+    subpath: null,
+    mountpoint: dataDir,
+    readonly: false,
+  })
+  if (cfg?.vllm.mode !== 'external') {
+    mounts = mounts.mountDependency({
+      dependencyId: 'vllm',
+      volumeId: 'public',
+      subpath: null,
+      mountpoint: '/run/vllm',
+      readonly: true,
+    })
+  }
+
   const sub = await sdk.SubContainer.of(
     effects,
     { imageId: 'helix-home' },
-    sdk.Mounts.of()
-      .mountVolume({
-        volumeId: 'main',
-        subpath: null,
-        mountpoint: dataDir,
-        readonly: false,
-      })
-      .mountDependency({
-        dependencyId: 'vllm',
-        volumeId: 'public',
-        subpath: null,
-        mountpoint: '/run/vllm',
-        readonly: true,
-      }),
+    mounts,
     'helix-home-sub',
   )
 
@@ -46,26 +82,26 @@ export const main = sdk.setupMain(async ({ effects }) => {
       env: {
         HELIX_DATA_DIR: dataDir,
         HELIX_CONFIG_PATH: `${dataDir}/config.json`,
-        MATRIX_HOMESERVER: cfg.matrix.homeserver,
-        MATRIX_USER_ID: cfg.matrix.userId,
-        MATRIX_ACCESS_TOKEN: cfg.matrix.accessToken,
-        MATRIX_ALLOW_LIST: cfg.matrix.allowList,
-        GITEA_HOST: cfg.gitea.host,
-        GITEA_TOKEN: cfg.gitea.token,
-        VLLM_ENDPOINT: cfg.vllm.endpoint,
-        VLLM_MODEL: cfg.vllm.model,
-        // Path to vllm's public credentials file (mounted from the vllm
-        // dep's `public` volume). The agent reads `apiKey` from here so
-        // the user doesn't have to copy it manually. Endpoint defaults to
-        // vllm's intra-StartOS URL.
-        VLLM_DEP_STORE: '/run/vllm/credentials.json',
-        VLLM_DEP_ENDPOINT: 'http://vllm.startos:8000/v1',
+        MATRIX_HOMESERVER: matrixHomeserver,
+        MATRIX_USER_ID: cfg?.matrixUserId ?? '',
+        MATRIX_ACCESS_TOKEN: cfg?.matrixAccessToken ?? '',
+        MATRIX_ALLOW_LIST: cfg?.allowList ?? '',
+        GITEA_HOST: giteaHost,
+        GITEA_TOKEN: cfg?.giteaToken ?? '',
+        VLLM_ENDPOINT: vllmEndpoint,
+        VLLM_API_KEY: vllmApiKey,
+        VLLM_MODEL: cfg?.vllmModel ?? '',
+        VLLM_DEP_STORE: vllmDepStorePath,
       },
     },
     ready: {
       display: i18n('Helix Home agent'),
       fn: async () => {
-        const ok = !!(cfg.matrix.homeserver && cfg.matrix.accessToken)
+        const ok = !!(
+          matrixHomeserver &&
+          cfg?.matrixAccessToken &&
+          cfg?.vllmModel
+        )
         return {
           result: ok ? 'success' : 'starting',
           message: ok

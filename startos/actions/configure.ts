@@ -2,15 +2,75 @@ import { i18n } from '../i18n'
 import { sdk } from '../sdk'
 import { configFile } from '../fileModels/config'
 
-const { InputSpec, Value } = sdk
+const { InputSpec, Value, Variants } = sdk
+
+const matrixVariants = Variants.of({
+  internal: {
+    name: 'Internal Synapse',
+    spec: InputSpec.of({}),
+  },
+  external: {
+    name: 'External',
+    spec: InputSpec.of({
+      homeserver: Value.text({
+        name: i18n('Matrix homeserver URL'),
+        description: null,
+        required: true,
+        default: null,
+      }),
+    }),
+  },
+})
+
+const giteaVariants = Variants.of({
+  internal: {
+    name: 'Internal Gitea',
+    spec: InputSpec.of({}),
+  },
+  external: {
+    name: 'External',
+    spec: InputSpec.of({
+      host: Value.text({
+        name: i18n('Gitea host URL'),
+        description: null,
+        required: true,
+        default: null,
+      }),
+    }),
+  },
+})
+
+const vllmVariants = Variants.of({
+  internal: {
+    name: 'Internal vLLM',
+    spec: InputSpec.of({}),
+  },
+  external: {
+    name: 'External (OpenAI-compatible)',
+    spec: InputSpec.of({
+      endpoint: Value.text({
+        name: i18n('vLLM endpoint URL'),
+        description: null,
+        required: true,
+        default: null,
+      }),
+      apiKey: Value.text({
+        name: i18n('vLLM API key'),
+        description: null,
+        required: true,
+        default: null,
+        masked: true,
+      }),
+    }),
+  },
+})
 
 export const inputSpec = InputSpec.of({
-  matrixHomeserver: Value.text({
-    name: i18n('Matrix homeserver URL'),
+  matrix: Value.union({
+    name: i18n('Matrix homeserver'),
     description: null,
-    required: true,
-    default: null,
-    placeholder: 'http://matrix.startos:8008',
+    default: 'internal',
+    variants: matrixVariants,
   }),
   matrixUserId: Value.text({
     name: i18n('Matrix bot user ID'),
@@ -33,12 +93,11 @@ export const inputSpec = InputSpec.of({
     default: null,
     placeholder: '!room:example.com,@me:example.com',
   }),
-  giteaHost: Value.text({
-    name: i18n('Gitea host URL'),
+  gitea: Value.union({
+    name: i18n('Gitea'),
     description: null,
-    required: true,
-    default: null,
-    placeholder: 'http://gitea.startos:3000',
+    default: 'internal',
+    variants: giteaVariants,
   }),
   giteaToken: Value.text({
     name: i18n('Gitea API token'),
@@ -47,12 +106,11 @@ export const inputSpec = InputSpec.of({
     default: null,
     masked: true,
   }),
-  vllmEndpoint: Value.text({
-    name: i18n('vLLM endpoint URL'),
+  vllm: Value.union({
+    name: i18n('vLLM (LLM backend)'),
     description: null,
-    required: false,
-    default: null,
-    placeholder: 'http://vllm.startos:8000/v1 (auto)',
+    default: 'internal',
+    variants: vllmVariants,
   }),
   vllmModel: Value.text({
     name: i18n('vLLM model name'),
@@ -81,50 +139,73 @@ export const configure = sdk.Action.withInput(
 
   async ({ effects }) => {
     const cfg = await configFile.read((c) => c).once()
+    if (!cfg) return {}
 
-    // Auto-fill the homeserver from synapse's exposed `homeserver` interface.
-    // Falls back to the inter-service hostname if synapse hasn't published
-    // an address yet (e.g. dependency was just installed).
-    let suggestedHomeserver = ''
-    try {
-      const sif = await sdk.serviceInterface
-        .get(effects, { id: 'homeserver', packageId: 'synapse' })
-        .once()
-      const urls = sif?.addressInfo?.nonLocal.format('urlstring') ?? []
-      suggestedHomeserver = urls[0] ?? ''
-    } catch {
-      // synapse not running yet
-    }
-    if (!suggestedHomeserver) suggestedHomeserver = 'http://synapse.startos'
+    const matrix =
+      cfg.matrix.mode === 'external'
+        ? { selection: 'external' as const, value: { homeserver: cfg.matrix.homeserver || '' } }
+        : { selection: 'internal' as const, value: {} }
+
+    const gitea =
+      cfg.gitea.mode === 'external'
+        ? { selection: 'external' as const, value: { host: cfg.gitea.host || '' } }
+        : { selection: 'internal' as const, value: {} }
+
+    const vllm =
+      cfg.vllm.mode === 'external'
+        ? {
+            selection: 'external' as const,
+            value: {
+              endpoint: cfg.vllm.endpoint || '',
+              apiKey: cfg.vllm.apiKey || '',
+            },
+          }
+        : { selection: 'internal' as const, value: {} }
 
     return {
-      matrixHomeserver: cfg?.matrix.homeserver || suggestedHomeserver,
-      matrixUserId: cfg?.matrix.userId || undefined,
-      matrixAccessToken: cfg?.matrix.accessToken || undefined,
-      allowList: cfg?.matrix.allowList || undefined,
-      giteaHost: cfg?.gitea.host || undefined,
-      giteaToken: cfg?.gitea.token || undefined,
-      vllmEndpoint: cfg?.vllm.endpoint || undefined,
-      vllmModel: cfg?.vllm.model || undefined,
+      matrix,
+      matrixUserId: cfg.matrixUserId || undefined,
+      matrixAccessToken: cfg.matrixAccessToken || undefined,
+      allowList: cfg.allowList || undefined,
+      gitea,
+      giteaToken: cfg.giteaToken || undefined,
+      vllm,
+      vllmModel: cfg.vllmModel || undefined,
     }
   },
 
   async ({ effects, input }) => {
+    const matrix =
+      input.matrix.selection === 'external'
+        ? {
+            mode: 'external' as const,
+            homeserver: input.matrix.value.homeserver,
+          }
+        : { mode: 'internal' as const }
+
+    const gitea =
+      input.gitea.selection === 'external'
+        ? { mode: 'external' as const, host: input.gitea.value.host }
+        : { mode: 'internal' as const }
+
+    const vllm =
+      input.vllm.selection === 'external'
+        ? {
+            mode: 'external' as const,
+            endpoint: input.vllm.value.endpoint,
+            apiKey: input.vllm.value.apiKey,
+          }
+        : { mode: 'internal' as const }
+
     await configFile.merge(effects, {
-      matrix: {
-        homeserver: input.matrixHomeserver,
-        userId: input.matrixUserId,
-        accessToken: input.matrixAccessToken,
-        allowList: input.allowList ?? '',
-      },
-      gitea: {
-        host: input.giteaHost,
-        token: input.giteaToken,
-      },
-      vllm: {
-        endpoint: input.vllmEndpoint ?? '',
-        model: input.vllmModel ?? '',
-      },
+      matrix,
+      matrixUserId: input.matrixUserId,
+      matrixAccessToken: input.matrixAccessToken,
+      allowList: input.allowList ?? '',
+      gitea,
+      giteaToken: input.giteaToken,
+      vllm,
+      vllmModel: input.vllmModel,
     })
 
     return {

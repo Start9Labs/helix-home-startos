@@ -88,29 +88,32 @@ Tasks dedup by replayId (`<package-id>:<action-id>` by default), so it's
 safe to call `createOwnTask` again later — it'll be a no-op until the
 user runs the action.
 
-## Synapse homeserver auto-fill
+## Internal / External integrations
 
-The Matrix dependency is the `synapse` package (id `synapse`, not `matrix`).
-The Configure action's prefill calls `sdk.serviceInterface.get(effects,
-{ id: 'homeserver', packageId: 'synapse' }).once()` and uses the first
-`nonLocal` URL it returns as the default for `matrixHomeserver`. If synapse
-hasn't published an address yet (just installed, not started), the fallback
-is the inter-service hostname `http://synapse.startos`.
+Each of `matrix`, `gitea`, `vllm` is a `Value.union` in the Configure
+action with two variants:
 
-## vLLM auto-discovery
+- **Internal** (default) — the same-StartOS dep is used. Configure stores
+  `mode: 'internal'` only; runtime resolution happens in `startos/main.ts`
+  (synapse + gitea via `sdk.serviceInterface.get`, vllm via mounted
+  `public/credentials.json`).
+- **External** — Configure prompts for the URL (and, for vLLM, the api
+  key) and stores them in `mode: 'external'` shape; `main.ts` uses those
+  values verbatim.
 
-vllm-startos exposes a dedicated `public` volume containing
-`credentials.json` (`{ apiKey: string }`) for dependent services. We mount
-that volume read-only at `/run/vllm/` (declared in `startos/main.ts` via
-`mountDependency` with `volumeId: 'public'`). On agent boot, `config.ts`
-parses `/run/vllm/credentials.json` and pulls `apiKey`, which is then
-exposed as `OPENAI_API_KEY` before `AuthStorage.create()` so pi picks it
-up.
+`startos/dependencies.ts` reads the file model and only declares a dep as
+`{ kind: 'running' }` when the corresponding mode is Internal. The
+manifest declares all three as `optional: true` so a partial map is
+type-legal.
 
-The endpoint defaults to `http://vllm.startos:8000/v1` (vllm's `api`
-interface). The Configure action's `vllmEndpoint` field is an optional
-override; `vllmModel` is required (vllm's public volume doesn't currently
-expose the running model id).
+`main.ts` also conditionally mounts vllm's `public` volume — only when
+`vllm.mode === 'internal'` — so external-vLLM users don't carry an
+unused dep mount.
+
+Synapse's interface id is `homeserver`, gitea's is `http`, vllm's is
+`api` (port 8000). Fallbacks if a same-host dep hasn't published an
+address yet: `http://synapse.startos`, `http://gitea.startos`,
+`http://vllm.startos:8000/v1`.
 
 ## start-cli auth
 

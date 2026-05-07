@@ -40,7 +40,7 @@ export const manifest = setupManifest({
   dependencies: {
     synapse: {
       description: null,
-      optional: false,
+      optional: true,
       metadata: {
         title: 'Matrix (Synapse)',
         icon: 'icon.svg',
@@ -48,7 +48,7 @@ export const manifest = setupManifest({
     },
     gitea: {
       description: null,
-      optional: false,
+      optional: true,
       metadata: {
         title: 'Gitea',
         icon: 'icon.svg',
@@ -56,7 +56,7 @@ export const manifest = setupManifest({
     },
     vllm: {
       description: null,
-      optional: false,
+      optional: true,
       metadata: {
         title: 'vLLM',
         icon: 'icon.svg',

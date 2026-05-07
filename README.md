@@ -32,16 +32,20 @@ own StartOS box.
 2. Run the **Sign in to StartOS** action, supply this server's hostname and
    master password. The agent stores its `start-cli` session in `/data/home`
    on the persistent volume.
-3. Run the **Configure agent** action with:
-   - Matrix homeserver URL (prefilled from the synapse dependency)
-   - Bot user ID, bot access token
+3. Run the **Configure agent** action. For each of Matrix / Gitea / vLLM
+   you pick **Internal** (use the same-StartOS dep) or **External** (point
+   at your own server). Choosing Internal pulls the URL/api-key from the
+   dependency at runtime; choosing External adds a URL field (and, for
+   vLLM, an api-key field) to the form. Selecting Internal also marks
+   that package as a hard dependency for this install — choose External
+   if you want to use, say, a beefier vLLM box outside this StartOS
+   server.
+4. Fill in the rest:
+   - Matrix bot user ID + access token
    - (optional) comma-separated allow-list of room IDs / user IDs
-   - Gitea host URL + an API token for the bot user
-   - vLLM model name (required — e.g. `Qwen/Qwen2.5-Coder-32B-Instruct`).
-     The **api key and endpoint are auto-discovered** from the vllm
-     dependency's `public/credentials.json` and the vllm interface URL.
-     The endpoint field is an optional override.
-4. Restart the service. The bot connects to Matrix and starts replying.
+   - Gitea API token for the bot user
+   - vLLM model name (e.g. `Qwen/Qwen2.5-Coder-32B-Instruct`)
+5. Restart the service. The bot connects to Matrix and starts replying.
 
 ## Volumes & data layout
 
@@ -93,11 +97,17 @@ thread's slots before exiting.
 
 ## Dependencies
 
-| Package  | Why                                                                       |
-| -------- | ------------------------------------------------------------------------- |
-| synapse  | Matrix homeserver; the bot's home. Configure-action prefills the homeserver URL from synapse's interface. |
-| gitea    | Where the agent commits/pushes its work                                    |
-| vllm     | OpenAI-compatible LLM endpoint pi targets. Vllm's `public` volume is mounted read-only at `/run/vllm/`; api key comes from `credentials.json`. |
+All three of synapse / gitea / vllm are declared as **optional**
+dependencies in the manifest. Whether each is required at install time
+depends on the **Internal / External** choice in the Configure action —
+selecting Internal turns it into a hard dependency, selecting External
+leaves StartOS free to install Helix Home on its own.
+
+| Package  | When required           | Why                                                                       |
+| -------- | ----------------------- | ------------------------------------------------------------------------- |
+| synapse  | Matrix mode = Internal  | Matrix homeserver. URL pulled from `serviceInterface.get`.                |
+| gitea    | Gitea mode = Internal   | Where the agent commits/pushes its work. URL pulled the same way.         |
+| vllm     | vLLM mode = Internal    | OpenAI-compatible LLM endpoint. `public` volume mounted at `/run/vllm/` (api key in `credentials.json`); endpoint defaults to `http://vllm.startos:8000/v1`. |
 
 ## Known limitations
 
