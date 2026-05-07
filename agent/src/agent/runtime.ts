@@ -43,28 +43,37 @@ export function initAgentRuntime(): Runtime {
   for (const dir of required) if (!parts.includes(dir)) parts.unshift(dir)
   process.env.PATH = parts.join(delimiter)
 
+  if (!hasVllm) {
+    throw new Error(
+      'vLLM endpoint or model not configured (and the dependency mount at ' +
+        `${env.VLLM_DEP_STORE || '/run/vllm/store.json'} is empty or missing). ` +
+        'Make sure vllm is running, or set overrides via the "Configure agent" action.',
+    )
+  }
+
+  // Pi's openai provider auths via OPENAI_API_KEY env. Inject the effective
+  // key (user-set override OR vllm's exported apiKey) BEFORE AuthStorage
+  // initialises, so pi picks it up.
+  if (env.effectiveVllmApiKey) {
+    process.env.OPENAI_API_KEY = env.effectiveVllmApiKey
+  }
+
   const agentDir = getAgentDir()
   const authStorage = AuthStorage.create()
   const modelRegistry = ModelRegistry.create(authStorage)
 
-  if (!hasVllm) {
-    throw new Error(
-      'vLLM endpoint or model not configured. Run the "Configure agent" action.',
-    )
-  }
-
   // vLLM exposes an OpenAI-compatible API. We register against pi's "openai"
   // provider and then redirect baseUrl to the vLLM endpoint.
-  const model = modelRegistry.find('openai', env.VLLM_MODEL) ?? {
+  const model = modelRegistry.find('openai', env.effectiveVllmModel) ?? {
     provider: 'openai',
-    id: env.VLLM_MODEL,
-    name: env.VLLM_MODEL,
-    baseUrl: env.VLLM_ENDPOINT,
+    id: env.effectiveVllmModel,
+    name: env.effectiveVllmModel,
+    baseUrl: env.effectiveVllmEndpoint,
     contextWindow: 32_000,
     maxTokens: 8_192,
     cost: { input: 0, output: 0 },
   }
-  ;(model as Model<any>).baseUrl = env.VLLM_ENDPOINT
+  ;(model as Model<any>).baseUrl = env.effectiveVllmEndpoint
 
   runtime = {
     authStorage,
@@ -73,7 +82,8 @@ export function initAgentRuntime(): Runtime {
     model: model as Model<any>,
   }
   console.log(
-    `Helix Home: pi runtime ready (openai/${env.VLLM_MODEL} @ ${env.VLLM_ENDPOINT})`,
+    `Helix Home: pi runtime ready (openai/${env.effectiveVllmModel} @ ${env.effectiveVllmEndpoint}, ` +
+      `apiKey=${env.effectiveVllmApiKey ? 'set' : 'none'})`,
   )
   return runtime
 }

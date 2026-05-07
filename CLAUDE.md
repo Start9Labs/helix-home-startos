@@ -72,6 +72,20 @@ from inside the workspace gets correct ownership for free.
 `HELIX_MAX_SLOTS_PER_REPO` (default 8) caps slots per repo. `!done` and
 `!stop` both call `helix-repo release-thread <id>`.
 
+## vLLM auto-discovery
+
+The vllm dependency's volume is mounted read-only at `/run/vllm/` (declared
+in `startos/main.ts` via `mountDependency`). On agent boot, `config.ts`
+parses `/run/vllm/store.json` and pulls:
+
+- `apiKey` → exposed as `OPENAI_API_KEY` to pi before `AuthStorage.create()`
+- `serveArgs[0]` (the positional model id passed to `vllm serve`) → used as
+  the default model name
+
+The endpoint defaults to `http://vllm.startos:8000/v1` (vllm's `api`
+interface). The Configure action's `vllmEndpoint` / `vllmModel` fields are
+optional overrides that take precedence when set.
+
 ## start-cli auth
 
 The `Sign in to StartOS` action runs `start-cli auth login` inside a temp

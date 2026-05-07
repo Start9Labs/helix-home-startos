@@ -50,16 +50,16 @@ export const inputSpec = InputSpec.of({
   vllmEndpoint: Value.text({
     name: i18n('vLLM endpoint URL'),
     description: null,
-    required: true,
+    required: false,
     default: null,
-    placeholder: 'http://vllm.startos:8000/v1',
+    placeholder: 'http://vllm.startos:8000/v1 (auto)',
   }),
   vllmModel: Value.text({
     name: i18n('vLLM model name'),
     description: null,
-    required: true,
+    required: false,
     default: null,
-    placeholder: 'Qwen/Qwen2.5-Coder-32B-Instruct',
+    placeholder: 'auto (read from vllm serveArgs)',
   }),
 })
 
@@ -107,8 +107,8 @@ export const configure = sdk.Action.withInput(
         token: input.giteaToken,
       },
       vllm: {
-        endpoint: input.vllmEndpoint,
-        model: input.vllmModel,
+        endpoint: input.vllmEndpoint ?? '',
+        model: input.vllmModel ?? '',
       },
     })
 

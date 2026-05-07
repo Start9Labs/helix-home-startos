@@ -27,12 +27,17 @@ async function main() {
   if (hasMatrixCreds && hasVllm) {
     await startMatrixBot()
   } else {
+    const missing = [
+      !hasMatrixCreds && 'Matrix bot creds',
+      !hasVllm &&
+        'a vLLM endpoint (autodetected from the vllm dependency, or set via Configure)',
+    ]
+      .filter(Boolean)
+      .join(' and ')
     console.warn(
-      'helix-home: idle until "Configure agent" action provides Matrix + vLLM creds. ' +
-        'Restart the service after configuring.',
+      `helix-home: idle until ${missing} are available. Run the "Configure agent" ` +
+        'action and then restart this service.',
     )
-    // Keep the process alive so StartOS sees it as running. The user will
-    // restart the daemon after configuring; on next boot we'll have creds.
     setInterval(() => {}, 1 << 30)
   }
 }
