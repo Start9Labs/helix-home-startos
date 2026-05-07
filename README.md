@@ -78,12 +78,10 @@ cd "$(helix-repo http://gitea.startos:3000/me/foo.git my-branch)"
 helix-repo list                                     # who owns what
 ```
 
-On btrfs (StartOS data volumes are usually btrfs), slots are real subvolume
-snapshots — creating one is instant and shares storage with baseline until
-divergence. On other filesystems the wrapper falls back to
-`cp --reflink=auto -r`. Either way, build artefacts (`node_modules/`,
-`target/`) live inside the slot and survive the thread, but baseline is
-never modified.
+Slot creation is `cp -a --reflink=auto baseline slot-N` — copy-on-write on
+btrfs/xfs/zfs (instant + storage shared with baseline until divergence), a
+plain copy elsewhere. Build artefacts (`node_modules/`, `target/`) live
+inside the slot and survive across turns, but baseline is never modified.
 
 Slots are per-repo capped (`HELIX_MAX_SLOTS_PER_REPO`, default 8). `!done`
 releases every slot owned by the calling thread; `!stop` releases this

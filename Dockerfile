@@ -20,7 +20,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl git make jq gawk \
       python3 squashfs-tools \
       podman fuse-overlayfs uidmap slirp4netns \
-      btrfs-progs \
       openssh-client \
     && rm -rf /var/lib/apt/lists/*
 

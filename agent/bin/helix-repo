@@ -16,8 +16,8 @@
 #     slots/slot-N/                         per-thread working tree
 #     slots/slot-N/.helix/owner             contains the thread id
 #
-# A slot is a btrfs subvolume snapshot of baseline when the FS supports it,
-# otherwise a `cp --reflink=auto -r` (CoW on xfs/btrfs, plain copy elsewhere).
+# A slot is a `cp -a --reflink=auto` of baseline — CoW on btrfs/xfs/zfs, a
+# regular copy elsewhere. No btrfs subvolumes, no FS-specific paths.
 #
 # The caller's thread is identified, in order:
 #   1. $HELIX_THREAD_ID
@@ -81,27 +81,15 @@ repo_url() {
   fi
 }
 
-# btrfs subvolume snapshot if /data is btrfs, else cp --reflink=auto.
+# `cp --reflink=auto` is CoW on btrfs/xfs/zfs and a regular copy elsewhere.
+# That's the entire snapshot strategy — no subvolumes, no fuss.
 snapshot() {
-  src="$1"
-  dst="$2"
-  if command -v btrfs >/dev/null 2>&1 \
-     && btrfs subvolume snapshot "$src" "$dst" >/dev/null 2>&1
-  then
-    return 0
-  fi
-  cp -a --reflink=auto "$src" "$dst"
+  cp -a --reflink=auto "$1" "$2"
 }
 
 destroy() {
-  d="$1"
-  if [ ! -e "$d" ]; then return 0; fi
-  if command -v btrfs >/dev/null 2>&1 \
-     && btrfs subvolume delete "$d" >/dev/null 2>&1
-  then
-    return 0
-  fi
-  rm -rf "$d"
+  [ -e "$1" ] || return 0
+  rm -rf "$1"
 }
 
 # Ensure baseline clone exists (idempotent + interlock).
@@ -127,13 +115,7 @@ ensure_baseline() {
     flock 9
     if [ ! -d "$base/.git" ]; then
       log "cloning baseline for $key from $url"
-      # Subvol if we can; falls back gracefully.
-      if command -v btrfs >/dev/null 2>&1 \
-         && btrfs subvolume create "$base" >/dev/null 2>&1
-      then :
-      else
-        mkdir -p "$base"
-      fi
+      mkdir -p "$base"
       git clone --quiet "$url" "$base"
       [ -n "$branch" ] && (cd "$base" && git checkout --quiet "$branch") || true
     fi

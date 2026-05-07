@@ -60,9 +60,9 @@ runtime image. It gives pi a pooled, copy-on-write working tree per repo:
         slot-N/.helix/owner       thread id
 ```
 
-On btrfs (StartOS volumes are usually btrfs), slot creation is a
-`btrfs subvolume snapshot` — instant + storage shared with baseline until
-divergence. Falls back to `cp --reflink=auto -r` elsewhere.
+Slot creation is `cp -a --reflink=auto baseline slot-N` — copy-on-write on
+btrfs/xfs/zfs (instant, storage shared with baseline until divergence), a
+plain copy elsewhere. No FS-specific paths in the wrapper.
 
 Thread attribution: `helix-repo` reads `$HELIX_THREAD_ID` first, then walks
 up from `$PWD` for `.helix/thread-id`. The matrix handler writes that file
