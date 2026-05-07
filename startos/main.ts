@@ -51,14 +51,14 @@ export const main = sdk.setupMain(async ({ effects }) => {
     vllmDepStorePath = '/run/vllm/credentials.json'
   }
 
-  // ----- build mounts: only mount vllm dep when integration is internal -----
+  // ----- build mounts: only mount vllm dep when integration is "internal"
   let mounts = sdk.Mounts.of().mountVolume({
     volumeId: 'main',
     subpath: null,
     mountpoint: dataDir,
     readonly: false,
   })
-  if (cfg?.vllm.mode !== 'external') {
+  if (cfg?.vllm.mode === 'internal') {
     mounts = mounts.mountDependency({
       dependencyId: 'vllm',
       volumeId: 'public',

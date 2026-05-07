@@ -7,19 +7,24 @@ import { configFileName } from '../utils'
 // the URL/token. The shape mirrors the Value.union output produced by
 // the Configure action so we can copy the result straight in.
 
+// Defaults to "external" with empty strings on first boot — that way the
+// daemon can come up before the user has resolved any deps. Switching to
+// "internal" via the Configure action turns the corresponding dep into a
+// hard requirement (and StartOS auto-installs it).
+
 const matrixShape = z
   .discriminatedUnion('mode', [
     z.object({ mode: z.literal('internal') }),
     z.object({ mode: z.literal('external'), homeserver: z.string().catch('') }),
   ])
-  .catch(() => ({ mode: 'internal' as const }))
+  .catch(() => ({ mode: 'external' as const, homeserver: '' }))
 
 const giteaShape = z
   .discriminatedUnion('mode', [
     z.object({ mode: z.literal('internal') }),
     z.object({ mode: z.literal('external'), host: z.string().catch('') }),
   ])
-  .catch(() => ({ mode: 'internal' as const }))
+  .catch(() => ({ mode: 'external' as const, host: '' }))
 
 const vllmShape = z
   .discriminatedUnion('mode', [
@@ -30,7 +35,7 @@ const vllmShape = z
       apiKey: z.string().catch(''),
     }),
   ])
-  .catch(() => ({ mode: 'internal' as const }))
+  .catch(() => ({ mode: 'external' as const, endpoint: '', apiKey: '' }))
 
 const shape = z.object({
   matrix: matrixShape,
