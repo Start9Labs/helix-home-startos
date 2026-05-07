@@ -72,6 +72,15 @@ from inside the workspace gets correct ownership for free.
 `HELIX_MAX_SLOTS_PER_REPO` (default 8) caps slots per repo. `!done` and
 `!stop` both call `helix-repo release-thread <id>`.
 
+## Synapse homeserver auto-fill
+
+The Matrix dependency is the `synapse` package (id `synapse`, not `matrix`).
+The Configure action's prefill calls `sdk.serviceInterface.get(effects,
+{ id: 'homeserver', packageId: 'synapse' }).once()` and uses the first
+`nonLocal` URL it returns as the default for `matrixHomeserver`. If synapse
+hasn't published an address yet (just installed, not started), the fallback
+is the inter-service hostname `http://synapse.startos`.
+
 ## vLLM auto-discovery
 
 vllm-startos exposes a dedicated `public` volume containing

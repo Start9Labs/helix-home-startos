@@ -81,16 +81,31 @@ export const configure = sdk.Action.withInput(
 
   async ({ effects }) => {
     const cfg = await configFile.read((c) => c).once()
-    if (!cfg) return {}
+
+    // Auto-fill the homeserver from synapse's exposed `homeserver` interface.
+    // Falls back to the inter-service hostname if synapse hasn't published
+    // an address yet (e.g. dependency was just installed).
+    let suggestedHomeserver = ''
+    try {
+      const sif = await sdk.serviceInterface
+        .get(effects, { id: 'homeserver', packageId: 'synapse' })
+        .once()
+      const urls = sif?.addressInfo?.nonLocal.format('urlstring') ?? []
+      suggestedHomeserver = urls[0] ?? ''
+    } catch {
+      // synapse not running yet
+    }
+    if (!suggestedHomeserver) suggestedHomeserver = 'http://synapse.startos'
+
     return {
-      matrixHomeserver: cfg.matrix.homeserver || undefined,
-      matrixUserId: cfg.matrix.userId || undefined,
-      matrixAccessToken: cfg.matrix.accessToken || undefined,
-      allowList: cfg.matrix.allowList || undefined,
-      giteaHost: cfg.gitea.host || undefined,
-      giteaToken: cfg.gitea.token || undefined,
-      vllmEndpoint: cfg.vllm.endpoint || undefined,
-      vllmModel: cfg.vllm.model || undefined,
+      matrixHomeserver: cfg?.matrix.homeserver || suggestedHomeserver,
+      matrixUserId: cfg?.matrix.userId || undefined,
+      matrixAccessToken: cfg?.matrix.accessToken || undefined,
+      allowList: cfg?.matrix.allowList || undefined,
+      giteaHost: cfg?.gitea.host || undefined,
+      giteaToken: cfg?.gitea.token || undefined,
+      vllmEndpoint: cfg?.vllm.endpoint || undefined,
+      vllmModel: cfg?.vllm.model || undefined,
     }
   },
 

@@ -2,7 +2,7 @@ import { sdk } from './sdk'
 
 export const setDependencies = sdk.setupDependencies(
   async ({ effects: _effects }) => ({
-    matrix: {
+    synapse: {
       kind: 'running',
       versionRange: '>=0.0.0',
       healthChecks: [],

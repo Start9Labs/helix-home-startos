@@ -38,11 +38,11 @@ export const manifest = setupManifest({
     stop: null,
   },
   dependencies: {
-    matrix: {
+    synapse: {
       description: null,
       optional: false,
       metadata: {
-        title: 'Matrix',
+        title: 'Matrix (Synapse)',
         icon: 'icon.svg',
       },
     },
