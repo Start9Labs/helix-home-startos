@@ -28,9 +28,23 @@ RUN curl -fsSL https://start9labs.github.io/start-cli/install.sh | sh \
     && mv /root/.local/bin/start-cli /usr/local/bin/start-cli \
     && start-cli --version
 
-# Configure rootless podman for fuse-overlayfs.
-RUN mkdir -p /etc/containers \
-    && printf '[storage]\ndriver = "overlay"\n[storage.options.overlay]\nmount_program = "/usr/bin/fuse-overlayfs"\n' > /etc/containers/storage.conf
+# Configure rootless podman + fuse-overlayfs. Both `runroot` and `graphroot`
+# must be present at the top of [storage] or podman aborts with
+# "runroot must be set" — even with --runroot/--root flags. Discovered
+# while testing against start-os#3209 (nestedRuntime). The mkdirs need
+# to exist before any podman invocation; we put them on /tmp/containers
+# so the data is writable even when /var is mounted ro elsewhere.
+RUN mkdir -p /etc/containers /run/containers/storage /var/lib/containers/storage \
+    && cat > /etc/containers/storage.conf <<'EOF'
+[storage]
+driver = "overlay"
+runroot = "/run/containers/storage"
+graphroot = "/var/lib/containers/storage"
+
+[storage.options.overlay]
+mount_program = "/usr/bin/fuse-overlayfs"
+mountopt = "nodev,metacopy=on"
+EOF
 
 WORKDIR /app
 
