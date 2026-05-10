@@ -27,24 +27,28 @@ own StartOS box.
 
 ## Install + first-run flow
 
-1. Install Helix Home from your registry (or sideload). Make sure you have
-   **Matrix**, **Gitea**, and **vLLM** installed and running first.
-2. Run the **Sign in to StartOS** action, supply this server's hostname and
-   master password. The agent stores its `start-cli` session in `/data/home`
-   on the persistent volume.
-3. Run the **Configure agent** action. For each of Matrix / Gitea / vLLM
-   you pick **Internal** (use the same-StartOS dep) or **External** (point
-   at your own server). Choosing Internal pulls the URL/api-key from the
-   dependency at runtime; choosing External adds a URL field (and, for
-   vLLM, an api-key field) to the form. Selecting Internal also marks
-   that package as a hard dependency for this install — choose External
-   if you want to use, say, a beefier vLLM box outside this StartOS
-   server.
-4. Fill in the rest:
+1. Install Helix Home from your registry (or sideload). The daemon comes
+   up idle on first boot — there are no hard dependencies until you opt
+   into them via Configure.
+2. Run the **Configure agent** action (surfaced as a critical task on
+   first install — the service can't start usefully without it). For
+   each of Matrix / Gitea / vLLM you pick:
+   - **Internal** — use the same-StartOS dep. Picking this turns that
+     package into a hard dependency at install time, and StartOS will
+     auto-install/start it. URLs and (for vLLM) the api key are pulled
+     from the dep at runtime.
+   - **External** (the default) — supply your own URL, and for vLLM the
+     api key, in the form. Use this if you want to point at, say, a
+     beefier vLLM box outside this StartOS server.
+3. Fill in the rest of the form:
    - Matrix bot user ID + access token
    - (optional) comma-separated allow-list of room IDs / user IDs
    - Gitea API token for the bot user
    - vLLM model name (e.g. `Qwen/Qwen2.5-Coder-32B-Instruct`)
+4. Run the **Sign in to StartOS** action (surfaced as an "important"
+   task — only required for `!install`, not for boot). Supply this
+   server's hostname and master password. The agent stores its
+   `start-cli` session in `/data/home` on the persistent volume.
 5. Restart the service. The bot connects to Matrix and starts replying.
 
 ## Volumes & data layout
@@ -55,11 +59,13 @@ own StartOS box.
 
 ```
 /data/
-├── home/.startos/config.yaml   # start-cli session (from Sign-in action)
-├── config.json                 # set by the Configure action
-├── matrix/                     # E2EE crypto + sync state
-├── sessions/<thread>/          # pi JSONL session files
-└── workspaces/<thread>/        # repo clones the agent works in
+├── home/.startos/config.yaml      # start-cli session (from Sign-in action)
+├── config.json                    # set by the Configure action
+├── matrix/                        # E2EE crypto + sync state
+├── sessions/<thread>/             # pi JSONL session files
+├── workspaces/<thread>/           # per-thread cwd, .helix/thread-id marker
+├── repos/<repo>/baseline/         # clean clone (helix-repo)
+└── repos/<repo>/slots/slot-N/     # CoW snapshot, owned by a thread
 ```
 
 ## Bot commands
@@ -92,8 +98,7 @@ plain copy elsewhere. Build artefacts (`node_modules/`, `target/`) live
 inside the slot and survive across turns, but baseline is never modified.
 
 Slots are per-repo capped (`HELIX_MAX_SLOTS_PER_REPO`, default 8). `!done`
-releases every slot owned by the calling thread; `!stop` releases this
-thread's slots before exiting.
+releases every slot owned by the calling thread.
 
 ## Dependencies
 
@@ -112,10 +117,14 @@ leaves StartOS free to install Helix Home on its own.
 ## Known limitations
 
 - **`nestedRuntime` requires [start-os#3209](https://github.com/Start9Labs/start-os/pull/3209).**
-  Without the runtime change, the container has no `/dev/fuse`, so
-  `start-cli s9pk pack` (image build inside the container) won't be able to
-  use a rootless OCI engine. The manifest already declares the opt-in; it'll
-  start having an effect once that PR lands.
+  The manifest declares `nestedRuntime: true`, which gives the package's
+  LXC `/dev/fuse` plus the cgroup permission needed for rootless podman.
+  Verified end-to-end against an ISO from that PR's branch. Until #3209
+  ships in a released `start-cli`, packing must be done with a `start-cli`
+  built from that branch — the released beta silently strips unknown
+  manifest fields. Without the runtime change, the package still
+  installs and the daemon still boots; only `!build` / `!install` (which
+  shell out to `start-cli s9pk pack` inside the container) require it.
 - Pi only — there is no Claude SDK / Anthropic path here on purpose.
 - One-user assumption; allow-list is a soft fence, not a hard auth boundary.
 - Builds verified locally for x86_64. aarch64 builds work in CI (or any host
