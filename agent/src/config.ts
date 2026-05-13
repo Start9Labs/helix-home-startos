@@ -41,13 +41,28 @@ function readVllmDep(): { apiKey: string } {
 
 const dep = readVllmDep()
 
+/**
+ * The OpenAI client appends `/chat/completions` to baseURL, which means
+ * baseURL must end at `/v1` — otherwise we get a 404 from vLLM. Most
+ * users type `https://vllm.example.com` without the `/v1` suffix; fix it
+ * here so the agent works regardless of which form they entered.
+ */
+function normaliseVllmEndpoint(url: string): string {
+  const trimmed = url.trim().replace(/\/+$/, '')
+  if (!trimmed) return ''
+  if (/\/v\d+$/.test(trimmed)) return trimmed
+  return `${trimmed}/v1`
+}
+
 export const env: Env & {
   effectiveVllmEndpoint: string
   effectiveVllmModel: string
   effectiveVllmApiKey: string
 } = {
   ...rawEnv,
-  effectiveVllmEndpoint: rawEnv.VLLM_ENDPOINT || rawEnv.VLLM_DEP_ENDPOINT,
+  effectiveVllmEndpoint: normaliseVllmEndpoint(
+    rawEnv.VLLM_ENDPOINT || rawEnv.VLLM_DEP_ENDPOINT,
+  ),
   effectiveVllmModel: rawEnv.VLLM_MODEL,
   effectiveVllmApiKey: rawEnv.VLLM_API_KEY || dep.apiKey,
 }

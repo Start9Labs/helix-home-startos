@@ -39,6 +39,8 @@ const dict = {
   'Gitea': 25,
   'vLLM (LLM backend)': 26,
   'vLLM API key': 27,
+  'Base URL of the OpenAI-compatible API. `/v1` is appended automatically if you leave it off (so `https://vllm.example.com` and `https://vllm.example.com/v1` both work).':
+    30,
 } as const
 
 /**

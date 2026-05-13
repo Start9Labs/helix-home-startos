@@ -50,7 +50,9 @@ const vllmVariants = Variants.of({
     spec: InputSpec.of({
       endpoint: Value.text({
         name: i18n('vLLM endpoint URL'),
-        description: null,
+        description: i18n(
+          'Base URL of the OpenAI-compatible API. `/v1` is appended automatically if you leave it off (so `https://vllm.example.com` and `https://vllm.example.com/v1` both work).',
+        ),
         required: true,
         default: null,
       }),
