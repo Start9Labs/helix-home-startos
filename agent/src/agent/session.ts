@@ -88,17 +88,47 @@ export async function dispatch(
 
     switch (event.type) {
       case 'message_end': {
-        // For providers that don't stream events (vLLM in some configs)
-        // pi only emits message_start / message_end — the full content
-        // is on event.message. Walk the content blocks and capture text.
+        // For non-streaming providers (and for any turn where the stream
+        // produced no chunks before terminating) pi only emits
+        // message_start/message_end — the full assistant payload is
+        // attached to event.message. Walk content blocks for text, and
+        // surface `errorMessage` if the upstream call failed (pi pushes
+        // an `error` event into the stream → agent-loop translates it
+        // into a message_end carrying { stopReason: "error", errorMessage }
+        // with no message_update beforehand, which is exactly the empty
+        // trace shape).
         arm()
-        const msg = (event as { message?: { role?: string; content?: unknown[] } })
-          .message
-        if (msg?.role === 'assistant' && Array.isArray(msg.content)) {
-          for (const block of msg.content as Array<{ type?: string; text?: unknown }>) {
-            if (block?.type === 'text' && typeof block.text === 'string') {
-              textEnds.push(block.text)
+        const msg = (event as {
+          message?: {
+            role?: string
+            content?: unknown[]
+            stopReason?: string
+            errorMessage?: string
+          }
+        }).message
+        if (msg?.role === 'assistant') {
+          if (Array.isArray(msg.content)) {
+            for (const block of msg.content as Array<{
+              type?: string
+              text?: unknown
+              thinking?: unknown
+            }>) {
+              if (block?.type === 'text' && typeof block.text === 'string') {
+                textEnds.push(block.text)
+              } else if (
+                block?.type === 'thinking' &&
+                typeof block.thinking === 'string' &&
+                textEnds.length === 0
+              ) {
+                // Some reasoning models only emit thinking blocks for very
+                // small prompts; use that as a last-resort visible body so
+                // the user isn't staring at "no response."
+                textEnds.push(`_(thinking)_ ${block.thinking}`)
+              }
             }
+          }
+          if (msg.stopReason === 'error' && msg.errorMessage) {
+            modelError = msg.errorMessage
           }
         }
         return
