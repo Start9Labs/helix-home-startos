@@ -75,20 +75,25 @@ async function handle(
     ? ev.content['m.relates_to']?.event_id || ev.event_id
     : ev.event_id
 
-  // Read receipts. Per MSC3771 the receipt body must carry a thread_id
-  // for thread-aware clients to mark threads read; the bot-sdk's
-  // sendReadReceipt only sends the empty (main-timeline) form. Clients
-  // disagree on whether a thread receipt is sufficient or whether a
-  // main-timeline receipt is also required, so we send both:
-  //   - in-thread message  → ack thread_id=threadRoot AND ack on `main`
-  //   - top-level message  → ack on `main` AND ack thread_id=event_id
-  //                          (since we always reply in a thread, this
-  //                          event IS about to become a thread root)
-  postReadReceipt(client, roomId, ev.event_id, 'main').catch((err) =>
+  // Read receipts. Per MSC3771 we send two per message — a thread
+  // receipt and a main-timeline receipt — so both kinds of client
+  // clear unread. But a main receipt has to target an event that's
+  // actually IN the main timeline; for an in-thread message the
+  // event_id is in the thread (not main) and Synapse rejects with
+  // M_INVALID_PARAM ("not related to thread main"). The thread root
+  // IS in main, so we redirect the main ack to it.
+  //   - in-thread message  → thread receipt on event_id (thread=root)
+  //                          + main receipt on the thread ROOT
+  //   - top-level message  → main receipt on event_id
+  //                          + thread receipt on event_id (thread=self,
+  //                            since we always reply in-thread, this
+  //                            event IS the future thread root)
+  const mainAckTarget = isThreadReply ? threadRoot : ev.event_id
+  postReadReceipt(client, roomId, mainAckTarget, 'main').catch((err) =>
     console.error('helix-home: main receipt failed:', err),
   )
-  const threadAck = isThreadReply ? threadRoot : ev.event_id
-  postReadReceipt(client, roomId, ev.event_id, threadAck).catch((err) =>
+  const threadAckId = isThreadReply ? threadRoot : ev.event_id
+  postReadReceipt(client, roomId, ev.event_id, threadAckId).catch((err) =>
     console.error('helix-home: thread receipt failed:', err),
   )
 
