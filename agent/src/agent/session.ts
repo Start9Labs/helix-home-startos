@@ -87,6 +87,22 @@ export async function dispatch(
     if (eventTrace.length > 60) eventTrace.shift()
 
     switch (event.type) {
+      case 'message_end': {
+        // For providers that don't stream events (vLLM in some configs)
+        // pi only emits message_start / message_end — the full content
+        // is on event.message. Walk the content blocks and capture text.
+        arm()
+        const msg = (event as { message?: { role?: string; content?: unknown[] } })
+          .message
+        if (msg?.role === 'assistant' && Array.isArray(msg.content)) {
+          for (const block of msg.content as Array<{ type?: string; text?: unknown }>) {
+            if (block?.type === 'text' && typeof block.text === 'string') {
+              textEnds.push(block.text)
+            }
+          }
+        }
+        return
+      }
       case 'message_update': {
         arm()
         const sub = event.assistantMessageEvent
