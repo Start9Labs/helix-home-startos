@@ -24,7 +24,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # start-cli (Start9 official installer)
-RUN curl -fsSL https://start9labs.github.io/start-cli/install.sh | sh \
+RUN curl -fsSL https://start9.com/start-cli/install.sh | sh \
     && mv /root/.local/bin/start-cli /usr/local/bin/start-cli \
     && start-cli --version
 
