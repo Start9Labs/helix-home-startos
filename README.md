@@ -41,7 +41,10 @@ own StartOS box.
      api key, in the form. Use this if you want to point at, say, a
      beefier vLLM box outside this StartOS server.
 3. Fill in the rest of the form:
-   - Matrix bot user ID + access token
+   - Matrix bot user ID (`@bot:server.tld`) + bot password — Helix Home
+     logs in via password once and caches the access token on the
+     persistent volume; create the user account on your homeserver
+     first
    - (optional) comma-separated allow-list of room IDs / user IDs
    - Gitea API token for the bot user
    - vLLM model name (e.g. `Qwen/Qwen2.5-Coder-32B-Instruct`)

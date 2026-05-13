@@ -40,7 +40,7 @@ const vllmShape = z
 const shape = z.object({
   matrix: matrixShape,
   matrixUserId: z.string().catch(''),
-  matrixAccessToken: z.string().catch(''),
+  matrixPassword: z.string().catch(''),
   allowList: z.string().catch(''),
   gitea: giteaShape,
   giteaToken: z.string().catch(''),

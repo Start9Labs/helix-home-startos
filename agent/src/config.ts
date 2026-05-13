@@ -6,7 +6,7 @@ const envSchema = z.object({
   HELIX_CONFIG_PATH: z.string().default('/data/config.json'),
   MATRIX_HOMESERVER: z.string().default(''),
   MATRIX_USER_ID: z.string().default(''),
-  MATRIX_ACCESS_TOKEN: z.string().default(''),
+  MATRIX_PASSWORD: z.string().default(''),
   MATRIX_ALLOW_LIST: z.string().default(''),
   GITEA_HOST: z.string().default(''),
   GITEA_TOKEN: z.string().default(''),
@@ -61,7 +61,7 @@ export const allowList: Set<string> = new Set(
 export const hasMatrixCreds = !!(
   env.MATRIX_HOMESERVER &&
   env.MATRIX_USER_ID &&
-  env.MATRIX_ACCESS_TOKEN
+  env.MATRIX_PASSWORD
 )
 
 export const hasVllm = !!(

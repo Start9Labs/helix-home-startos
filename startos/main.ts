@@ -84,7 +84,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
         HELIX_CONFIG_PATH: `${dataDir}/config.json`,
         MATRIX_HOMESERVER: matrixHomeserver,
         MATRIX_USER_ID: cfg?.matrixUserId ?? '',
-        MATRIX_ACCESS_TOKEN: cfg?.matrixAccessToken ?? '',
+        MATRIX_PASSWORD: cfg?.matrixPassword ?? '',
         MATRIX_ALLOW_LIST: cfg?.allowList ?? '',
         GITEA_HOST: giteaHost,
         GITEA_TOKEN: cfg?.giteaToken ?? '',
@@ -99,7 +99,7 @@ export const main = sdk.setupMain(async ({ effects }) => {
       fn: async () => {
         const ok = !!(
           matrixHomeserver &&
-          cfg?.matrixAccessToken &&
+          cfg?.matrixPassword &&
           cfg?.vllmModel
         )
         return {

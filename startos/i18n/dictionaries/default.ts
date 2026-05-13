@@ -21,7 +21,11 @@ const dict = {
     12,
   'Matrix homeserver URL': 13,
   'Matrix bot user ID': 14,
-  'Matrix bot access token': 15,
+  'Full @user:server.tld of the Matrix account the bot will sign in as. Create it on your homeserver first — Helix Home just signs in.':
+    15,
+  'Matrix bot password': 28,
+  'Password of the bot account. Helix Home logs in once and caches the access token on the persistent volume.':
+    29,
   'Allowed Matrix room or user IDs (comma-separated)': 16,
   'Gitea host URL': 17,
   'Gitea API token': 18,

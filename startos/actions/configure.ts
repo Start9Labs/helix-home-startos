@@ -74,14 +74,18 @@ export const inputSpec = InputSpec.of({
   }),
   matrixUserId: Value.text({
     name: i18n('Matrix bot user ID'),
-    description: null,
+    description: i18n(
+      'Full @user:server.tld of the Matrix account the bot will sign in as. Create it on your homeserver first — Helix Home just signs in.',
+    ),
     required: true,
     default: null,
     placeholder: '@helix:example.com',
   }),
-  matrixAccessToken: Value.text({
-    name: i18n('Matrix bot access token'),
-    description: null,
+  matrixPassword: Value.text({
+    name: i18n('Matrix bot password'),
+    description: i18n(
+      'Password of the bot account. Helix Home logs in once and caches the access token on the persistent volume.',
+    ),
     required: true,
     default: null,
     masked: true,
@@ -165,7 +169,7 @@ export const configure = sdk.Action.withInput(
     return {
       matrix,
       matrixUserId: cfg.matrixUserId || undefined,
-      matrixAccessToken: cfg.matrixAccessToken || undefined,
+      matrixPassword: cfg.matrixPassword || undefined,
       allowList: cfg.allowList || undefined,
       gitea,
       giteaToken: cfg.giteaToken || undefined,
@@ -200,7 +204,7 @@ export const configure = sdk.Action.withInput(
     await configFile.merge(effects, {
       matrix,
       matrixUserId: input.matrixUserId,
-      matrixAccessToken: input.matrixAccessToken,
+      matrixPassword: input.matrixPassword,
       allowList: input.allowList ?? '',
       gitea,
       giteaToken: input.giteaToken,
