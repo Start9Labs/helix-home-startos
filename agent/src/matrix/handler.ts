@@ -123,7 +123,7 @@ async function handle(
     const trimmed = body.slice(interruptMatch[0].length).trim()
     const followUp = trimmed || 'Stop what you were doing.'
     await abortThread(threadRoot)
-    const result = await dispatch({ key: threadRoot, prompt: followUp, cwd })
+    const result = await runDispatch(client, roomId, ev, threadRoot, cwd, followUp)
     const text =
       result.error ?? (result.text || `_(no response — ${result.toolCount} tool calls)_`)
     await reply(client, roomId, ev, threadRoot, text)
@@ -183,15 +183,108 @@ async function handle(
     return
   }
 
-  // Dispatch to pi.
-  const result = await dispatch({
-    key: threadRoot,
-    prompt: body,
-    cwd,
-  })
+  // Dispatch to pi (with typing indicators + 5-min activity heartbeat).
+  const result = await runDispatch(client, roomId, ev, threadRoot, cwd, body)
   const text =
     result.error ?? (result.text || `_(no response — ${result.toolCount} tool calls)_`)
   await reply(client, roomId, ev, threadRoot, text)
+}
+
+// ------- progress visibility -----------------------------------------
+
+type ToolCounts = {
+  commands: number
+  reads: number
+  edits: number
+  fetches: number
+  other: number
+}
+function emptyCounts(): ToolCounts {
+  return { commands: 0, reads: 0, edits: 0, fetches: 0, other: 0 }
+}
+function classifyTool(tool: string): keyof ToolCounts {
+  const t = tool.toLowerCase()
+  if (t === 'bash' || t === 'bashoutput' || t === 'killbash') return 'commands'
+  if (t === 'read' || t === 'grep' || t === 'glob' || t === 'find' || t === 'ls') return 'reads'
+  if (t === 'write' || t === 'edit' || t === 'notebookedit') return 'edits'
+  if (t === 'webfetch' || t === 'websearch') return 'fetches'
+  return 'other'
+}
+function formatCounts(c: ToolCounts): string {
+  const parts: string[] = []
+  if (c.commands) parts.push(`${c.commands} command${c.commands === 1 ? '' : 's'}`)
+  if (c.reads) parts.push(`${c.reads} read${c.reads === 1 ? '' : 's'}`)
+  if (c.edits) parts.push(`${c.edits} edit${c.edits === 1 ? '' : 's'}`)
+  if (c.fetches) parts.push(`${c.fetches} fetch${c.fetches === 1 ? '' : 'es'}`)
+  if (c.other) parts.push(`${c.other} other`)
+  return parts.join(', ')
+}
+function sumCounts(c: ToolCounts): number {
+  return c.commands + c.reads + c.edits + c.fetches + c.other
+}
+
+const HEARTBEAT_INTERVAL_MS = 5 * 60_000
+const TYPING_TIMEOUT_MS = 30_000
+
+/**
+ * Wrap a pi dispatch with periodic "Working — N commands, M reads…"
+ * heartbeats every 5 minutes (only if any tool ran since the last
+ * flush) plus a renewing typing indicator. Mirrors helix's
+ * verbosity='summary' pattern.
+ */
+async function runDispatch(
+  client: MatrixClient,
+  roomId: string,
+  ev: Event,
+  threadRoot: string,
+  cwd: string,
+  prompt: string,
+) {
+  let intervalCounts = emptyCounts()
+  let totalCounts = emptyCounts()
+
+  const flush = () => {
+    if (sumCounts(intervalCounts) === 0) return
+    const summary = formatCounts(intervalCounts)
+    intervalCounts = emptyCounts()
+    reply(client, roomId, ev, threadRoot, `_Working — ${summary}._`).catch(
+      (err) => console.error('helix-home: heartbeat post failed:', err),
+    )
+  }
+  const heartbeat = setInterval(flush, HEARTBEAT_INTERVAL_MS)
+  // Renew typing every 25s — the homeserver expires it after the
+  // timeout we pass otherwise.
+  const sendTyping = () =>
+    client.setTyping(roomId, true, TYPING_TIMEOUT_MS).catch(() => {})
+  sendTyping()
+  const typingTimer = setInterval(sendTyping, 25_000)
+
+  try {
+    const result = await dispatch({
+      key: threadRoot,
+      prompt,
+      cwd,
+      onTool: (state, tool) => {
+        if (state !== 'end') return
+        const bucket = classifyTool(tool)
+        intervalCounts[bucket] += 1
+        totalCounts[bucket] += 1
+      },
+    })
+    return result
+  } finally {
+    clearInterval(heartbeat)
+    clearInterval(typingTimer)
+    client.setTyping(roomId, false).catch(() => {})
+    // Trailing summary if anything happened that we didn't already
+    // flush (rare on fast turns, common on long ones).
+    if (sumCounts(intervalCounts) > 0) flush()
+    if (sumCounts(totalCounts) > 0) {
+      console.log(
+        `helix-home: dispatch done for ${threadRoot} — ${formatCounts(totalCounts)}`,
+      )
+    }
+  }
 }
 
 async function reply(
