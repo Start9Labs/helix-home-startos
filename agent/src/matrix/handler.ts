@@ -68,11 +68,32 @@ async function handle(
   if (allowList.size > 0 && !allowList.has(roomId) && !allowList.has(ev.sender))
     return
 
-  const body = ev.content.body.trim()
-  const threadRoot =
+  const isThreadReply =
     ev.content['m.relates_to']?.rel_type === THREAD_REL
-      ? ev.content['m.relates_to'].event_id || ev.event_id
-      : ev.event_id
+  const body = ev.content.body.trim()
+  const threadRoot = isThreadReply
+    ? ev.content['m.relates_to']?.event_id || ev.event_id
+    : ev.event_id
+
+  // Read receipts. Per MSC3771 the receipt body must carry a thread_id
+  // for thread-aware clients to mark threads read; the bot-sdk's
+  // sendReadReceipt only sends the empty (main-timeline) form.
+  //   - in-thread message  → ack thread_id = thread root
+  //   - top-level message  → ack on `main` AND on the message's own
+  //                          event_id (since we always reply in a thread,
+  //                          this event IS about to become a thread root)
+  if (isThreadReply) {
+    postReadReceipt(client, roomId, ev.event_id, threadRoot).catch((err) =>
+      console.error('helix-home: thread receipt failed:', err),
+    )
+  } else {
+    postReadReceipt(client, roomId, ev.event_id, 'main').catch((err) =>
+      console.error('helix-home: main receipt failed:', err),
+    )
+    postReadReceipt(client, roomId, ev.event_id, ev.event_id).catch((err) =>
+      console.error('helix-home: thread-root receipt failed:', err),
+    )
+  }
 
   const cwd = join(env.HELIX_DATA_DIR, 'workspaces', encode(threadRoot))
   await ensureWorkspace(cwd, threadRoot)
@@ -200,4 +221,26 @@ async function reply(
 
 function encode(s: string): string {
   return s.replace(/[^A-Za-z0-9_-]/g, '_').slice(0, 120)
+}
+
+/**
+ * POST a threaded `m.read` receipt. `threadId` is the thread root event
+ * id for in-thread acks, or the literal string `"main"` for top-level
+ * acks. The bot-sdk's `sendReadReceipt` only sends the main-timeline
+ * variant and so leaves threads showing as unread on Element X / Web
+ * with threads enabled — per MSC3771 we have to include the thread_id
+ * in the body.
+ */
+async function postReadReceipt(
+  client: MatrixClient,
+  roomId: string,
+  eventId: string,
+  threadId: string,
+): Promise<void> {
+  await client.doRequest(
+    'POST',
+    `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/receipt/m.read/${encodeURIComponent(eventId)}`,
+    null,
+    { thread_id: threadId },
+  )
 }
