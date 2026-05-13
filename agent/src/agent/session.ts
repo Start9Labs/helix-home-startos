@@ -54,6 +54,12 @@ export async function dispatch(
   const session = await getOrCreate(opts.key, opts.cwd)
 
   const text: string[] = []
+  /** Final-content fallback for providers that don't stream text_delta. */
+  const textEnds: string[] = []
+  /** Error events pi emits when the model call itself fails. */
+  let modelError: string | undefined
+  /** Recent event types — dumped if the turn finishes with no output. */
+  const eventTrace: string[] = []
   let toolCount = 0
   let stallTimer: ReturnType<typeof setTimeout> | undefined
   let aborted = false
@@ -73,6 +79,13 @@ export async function dispatch(
   }
 
   const unsubscribe = session.subscribe((event) => {
+    eventTrace.push(
+      event.type === 'message_update'
+        ? `message_update:${event.assistantMessageEvent.type}`
+        : event.type,
+    )
+    if (eventTrace.length > 60) eventTrace.shift()
+
     switch (event.type) {
       case 'message_update': {
         arm()
@@ -80,6 +93,21 @@ export async function dispatch(
         if (sub.type === 'text_delta') {
           text.push(sub.delta)
           opts.onText?.(sub.delta)
+        } else if (sub.type === 'text_end') {
+          // Non-streaming providers (some OpenAI-compatible endpoints
+          // including some vLLM configs) only emit text_end with the
+          // full content. Capture it as a fallback.
+          if (typeof sub.content === 'string' && sub.content.length > 0) {
+            textEnds.push(sub.content)
+          }
+        } else if (sub.type === 'error') {
+          const err = (sub as { error?: unknown }).error
+          modelError =
+            (err && typeof err === 'object' && 'errorMessage' in err
+              ? String((err as { errorMessage?: unknown }).errorMessage)
+              : undefined) ??
+            (typeof err === 'string' ? err : undefined) ??
+            `pi error event (reason=${(sub as { reason?: unknown }).reason})`
         }
         return
       }
@@ -115,7 +143,20 @@ export async function dispatch(
     unsubscribe()
   }
 
-  return { text: text.join(''), error, toolCount }
+  // Prefer streamed deltas; fall back to text_end content if the provider
+  // didn't stream. Surface model-side errors over the generic "no
+  // response" fallback in handler.ts.
+  let resultText = text.join('')
+  if (!resultText && textEnds.length > 0) resultText = textEnds.join('')
+  if (!error && modelError) error = modelError
+
+  if (!resultText && toolCount === 0 && !error) {
+    console.warn(
+      `helix-home: empty turn for ${opts.key} — pi event trace: ${eventTrace.join(', ')}`,
+    )
+  }
+
+  return { text: resultText, error, toolCount }
 }
 
 async function getOrCreate(
