@@ -12,9 +12,11 @@ type Event = {
   event_id: string
   sender: string
   type: string
+  state_key?: string
   content?: {
     body?: string
     msgtype?: string
+    membership?: string
     'm.relates_to'?: {
       rel_type?: string
       event_id?: string
@@ -23,6 +25,27 @@ type Event = {
 }
 
 export function registerHandlers(client: MatrixClient, botUserId: string) {
+  // Auto-join invites — without this, DMs from allowed users sit
+  // unaccepted forever. Gated by the same allow-list that filters
+  // room messages.
+  client.on('room.invite', async (roomId: string, ev: Event) => {
+    if (ev.state_key !== botUserId) return
+    if (ev.content?.membership !== 'invite') return
+    const sender = ev.sender || ''
+    if (allowList.size > 0 && !allowList.has(sender)) {
+      console.log(
+        `helix-home: ignoring invite to ${roomId} from ${sender} (not allow-listed)`,
+      )
+      return
+    }
+    try {
+      await client.joinRoom(roomId)
+      console.log(`helix-home: joined ${roomId} (invited by ${sender})`)
+    } catch (err) {
+      console.error(`helix-home: failed to join ${roomId}:`, err)
+    }
+  })
+
   client.on('room.message', async (roomId: string, ev: Event) => {
     try {
       await handle(client, botUserId, roomId, ev)
