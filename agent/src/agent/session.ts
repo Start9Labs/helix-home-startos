@@ -2,11 +2,14 @@ import { mkdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import {
   createAgentSession,
+  DefaultResourceLoader,
+  getAgentDir,
   SessionManager,
   type AgentSession,
 } from '@mariozechner/pi-coding-agent'
 import { env } from '../config.js'
 import { getAgentRuntime } from './runtime.js'
+import { buildSystemPrompt } from './system-prompt.js'
 
 const sessions = new Map<string, AgentSession>()
 
@@ -215,12 +218,26 @@ async function getOrCreate(
   const sessionsDir = join(env.HELIX_DATA_DIR, 'sessions', encodeKey(key))
   await mkdir(sessionsDir, { recursive: true })
   const sessionManager = SessionManager.create(sessionsDir)
+
+  // Append our StartOS-context briefing to pi's default coding-assistant
+  // prompt. Pi's resolvePromptInput treats a string as a file path when
+  // existsSync succeeds, else as literal content — our prompt's first
+  // char is '#', so existsSync returns false and the string becomes the
+  // prompt verbatim.
+  const resourceLoader = new DefaultResourceLoader({
+    cwd,
+    agentDir: getAgentDir(),
+    appendSystemPrompt: [buildSystemPrompt()],
+  })
+  await resourceLoader.reload()
+
   const { session } = await createAgentSession({
     cwd,
     authStorage: runtime.authStorage,
     modelRegistry: runtime.modelRegistry,
     model: runtime.model,
     sessionManager,
+    resourceLoader,
   })
   sessions.set(key, session)
   return session
