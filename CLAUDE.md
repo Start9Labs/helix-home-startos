@@ -132,6 +132,18 @@ service container. Until that PR ships in start-cli, the field is silently
 dropped during pack — but it's already in the bundled `javascript/index.js`
 manifest, so once #3209 lands, no rebuild is needed.
 
+## TLS
+
+The agent talks to endpoints the user themselves operates — their
+Synapse, their Gitea, their vLLM — many of which serve self-signed
+certs (StartOS-internal `.startos` hostnames and many self-hosted
+reverse proxies). On boot, `agent/src/index.ts` sets an undici global
+dispatcher with `rejectUnauthorized: false` AND
+`NODE_TLS_REJECT_UNAUTHORIZED=0` (latter so the legacy `request`
+library inside `matrix-bot-sdk` picks up the same policy). Set
+`HELIX_STRICT_TLS=true` in the daemon env to opt back into strict
+verification.
+
 ## Things to be careful with
 
 - Pi only — no Anthropic Claude SDK path. Don't add one back without

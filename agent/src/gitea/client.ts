@@ -13,11 +13,21 @@ const headers = () => ({
 
 export async function whoami(): Promise<GiteaUser | null> {
   if (!env.GITEA_HOST || !env.GITEA_TOKEN) return null
-  const res = await fetch(`${env.GITEA_HOST}/api/v1/user`, {
-    headers: headers(),
-  })
-  if (!res.ok) return null
-  return (await res.json()) as GiteaUser
+  try {
+    const res = await fetch(`${env.GITEA_HOST}/api/v1/user`, {
+      headers: headers(),
+    })
+    if (!res.ok) return null
+    return (await res.json()) as GiteaUser
+  } catch (err) {
+    // Probe-only — TLS / network / DNS errors here shouldn't crash the
+    // daemon. The agent will still come up and the user can fix gitea
+    // creds via Configure.
+    console.warn(
+      `helix-home: gitea probe failed: ${err instanceof Error ? err.message : String(err)}`,
+    )
+    return null
+  }
 }
 
 /**
