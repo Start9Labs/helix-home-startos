@@ -62,18 +62,24 @@ export function initAgentRuntime(): Runtime {
   const authStorage = AuthStorage.create()
   const modelRegistry = ModelRegistry.create(authStorage)
 
-  // vLLM exposes an OpenAI-compatible API. We register against pi's "openai"
-  // provider and then redirect baseUrl to the vLLM endpoint.
-  const model = modelRegistry.find('openai', env.effectiveVllmModel) ?? {
+  // vLLM exposes the OpenAI **chat completions** API at
+  // /v1/chat/completions — NOT the newer /v1/responses API that pi-ai's
+  // "openai" provider defaults to (`api: "openai-responses"`). Build
+  // the model from scratch with `api: "openai-completions"` so pi-ai
+  // routes through the right transport. baseUrl gets overridden to
+  // the vLLM endpoint regardless.
+  const model: Model<any> = {
     provider: 'openai',
+    api: 'openai-completions',
     id: env.effectiveVllmModel,
     name: env.effectiveVllmModel,
     baseUrl: env.effectiveVllmEndpoint,
+    reasoning: false,
+    input: ['text'],
     contextWindow: 32_000,
     maxTokens: 8_192,
-    cost: { input: 0, output: 0 },
-  }
-  ;(model as Model<any>).baseUrl = env.effectiveVllmEndpoint
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
+  } as Model<any>
 
   runtime = {
     authStorage,
