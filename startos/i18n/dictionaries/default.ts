@@ -2,14 +2,45 @@ export const DEFAULT_LANG = 'en_US'
 
 const dict = {
   // main.ts
-  'Starting Hello World!': 0,
-  'Web Interface': 1,
-  'The web interface is ready': 2,
-  'The web interface is not ready': 3,
+  'Starting Helix Home...': 0,
+  'Helix Home agent': 1,
+  'The Helix Home agent is running': 2,
+  'The Helix Home agent is not running': 3,
 
-  // interfaces.ts
-  'Web UI': 4,
-  'The web interface of Hello World': 5,
+  // actions
+  'Sign in to StartOS': 4,
+  'Sign the agent into start-cli on this server so it can build and install packages on your behalf.':
+    5,
+  'Server hostname': 6,
+  'Hostname or IP of this StartOS server (e.g. server-name.local).': 7,
+  'Server password': 8,
+  'StartOS master password.': 9,
+  'Sign-in successful': 10,
+  'Configure agent': 11,
+  'Set the Matrix bot credentials, Gitea API token, and vLLM model to use.':
+    12,
+  'Matrix homeserver URL': 13,
+  'Matrix bot user ID': 14,
+  'Full @user:server.tld of the Matrix account the bot will sign in as. Create it on your homeserver first — Helix Home just signs in.':
+    15,
+  'Matrix bot password': 28,
+  'Password of the bot account. Helix Home logs in once and caches the access token on the persistent volume.':
+    29,
+  'Allowed Matrix room or user IDs (comma-separated)': 16,
+  'Gitea host URL': 17,
+  'Gitea API token': 18,
+  'vLLM endpoint URL': 19,
+  'vLLM model name': 20,
+  'Configuration saved': 21,
+  'Set Matrix bot, Gitea, and vLLM credentials so the agent can boot.': 22,
+  'Sign the agent into start-cli on this server. Required for `!install` (building and installing packages onto this server).':
+    23,
+  'Matrix homeserver': 24,
+  'Gitea': 25,
+  'vLLM (LLM backend)': 26,
+  'vLLM API key': 27,
+  'Base URL of the OpenAI-compatible API. `/v1` is appended automatically if you leave it off (so `https://vllm.example.com` and `https://vllm.example.com/v1` both work).':
+    30,
 } as const
 
 /**

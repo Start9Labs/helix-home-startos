@@ -1,0 +1,26 @@
+{
+  "name": "helix-home-agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "build/index.js",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "^0.70.6",
+    "@matrix-org/matrix-sdk-crypto-nodejs": "^0.4.0",
+    "better-sqlite3": "^12.9.0",
+    "marked": "^17.0.4",
+    "matrix-bot-sdk": "^0.8.0",
+    "undici": "^8.2.0",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.19.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3"
+  }
+}
