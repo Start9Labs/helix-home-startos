@@ -77,23 +77,20 @@ async function handle(
 
   // Read receipts. Per MSC3771 the receipt body must carry a thread_id
   // for thread-aware clients to mark threads read; the bot-sdk's
-  // sendReadReceipt only sends the empty (main-timeline) form.
-  //   - in-thread message  → ack thread_id = thread root
-  //   - top-level message  → ack on `main` AND on the message's own
-  //                          event_id (since we always reply in a thread,
-  //                          this event IS about to become a thread root)
-  if (isThreadReply) {
-    postReadReceipt(client, roomId, ev.event_id, threadRoot).catch((err) =>
-      console.error('helix-home: thread receipt failed:', err),
-    )
-  } else {
-    postReadReceipt(client, roomId, ev.event_id, 'main').catch((err) =>
-      console.error('helix-home: main receipt failed:', err),
-    )
-    postReadReceipt(client, roomId, ev.event_id, ev.event_id).catch((err) =>
-      console.error('helix-home: thread-root receipt failed:', err),
-    )
-  }
+  // sendReadReceipt only sends the empty (main-timeline) form. Clients
+  // disagree on whether a thread receipt is sufficient or whether a
+  // main-timeline receipt is also required, so we send both:
+  //   - in-thread message  → ack thread_id=threadRoot AND ack on `main`
+  //   - top-level message  → ack on `main` AND ack thread_id=event_id
+  //                          (since we always reply in a thread, this
+  //                          event IS about to become a thread root)
+  postReadReceipt(client, roomId, ev.event_id, 'main').catch((err) =>
+    console.error('helix-home: main receipt failed:', err),
+  )
+  const threadAck = isThreadReply ? threadRoot : ev.event_id
+  postReadReceipt(client, roomId, ev.event_id, threadAck).catch((err) =>
+    console.error('helix-home: thread receipt failed:', err),
+  )
 
   const cwd = join(env.HELIX_DATA_DIR, 'workspaces', encode(threadRoot))
   await ensureWorkspace(cwd, threadRoot)
